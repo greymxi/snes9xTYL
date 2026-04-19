@@ -162,13 +162,23 @@ INLINE void S9xSetByte (uint8 Byte, uint32 Address)
     {
 		*(SetAddress + (Address & 0xffff)) = Byte;
 #ifdef CPU_SHUTDOWN
-		if ((SetAddress + (Address & 0xffff)) == SA1.WaitByteAddress1 ||
-			(SetAddress + (Address & 0xffff)) == SA1.WaitByteAddress2)
+		// Gate the SA1 wake-up detection on WaitByteAddress1 being set.
+		// For non-SA1 games these pointers are NULL, so the whole block
+		// collapses to a single predicted-not-taken branch. For SA1 games
+		// the vast majority of writes also miss this path, so the branch
+		// is kept cold. The computed address is cached in a local to avoid
+		// recomputing (SetAddress + (Address & 0xffff)) twice.
+		if (SA1.WaitByteAddress1)
 		{
-            if (!SA1.Executing)
-                SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
-            if (SA1.Executing) SA1.WaitCounter = 3;
-		}       
+			uint8 *writeAddr = SetAddress + (Address & 0xffff);
+			if (writeAddr == SA1.WaitByteAddress1 ||
+				writeAddr == SA1.WaitByteAddress2)
+			{
+				if (!SA1.Executing)
+					SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
+				if (SA1.Executing) SA1.WaitCounter = 3;
+			}
+		}
 #endif
 		return;
     }
@@ -201,14 +211,25 @@ INLINE void S9xSetWord(uint16 Word, uint32 Address)
 	if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
 	{
 #ifdef CPU_SHUTDOWN
-    uint8 *addr = SetAddress + (Address & 0xffff);
-    if (__builtin_expect(SA1.WaitByteAddress1 != NULL, 0) &&
-        (addr == SA1.WaitByteAddress1 || addr == SA1.WaitByteAddress2))
-    {
-        if (!SA1.Executing)
-            SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
-        if (SA1.Executing) SA1.WaitCounter = 3;
-    }
+		// Same optimization as S9xSetByte: gate on WaitByteAddress1 being set
+		// (NULL for non-SA1 games and for SA1 games without a registered
+		// wake-up address), and compute the write address once into a local.
+		if (SA1.WaitByteAddress1)
+		{
+			uint8 *writeAddr = SetAddress + (Address & 0xffff);
+			if (writeAddr == SA1.WaitByteAddress1 ||
+				writeAddr == SA1.WaitByteAddress2)
+			{
+				if (!SA1.Executing)
+					SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
+				if (SA1.Executing) SA1.WaitCounter = 3;
+			}
+		}
+#ifdef FAST_LSB_WORD_ACCESS
+	*(uint16 *) SetAddress = Word;
+#else
+	*(SetAddress + (Address & 0xffff)) = (uint8) Word;
+	*(SetAddress + ((Address + 1) & 0xffff)) = Word >> 8;
 #endif
 #else
 #ifdef FAST_LSB_WORD_ACCESS
