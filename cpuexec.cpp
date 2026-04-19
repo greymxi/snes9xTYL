@@ -93,10 +93,12 @@ void S9xMainLoop_SA1_APU (void) {
 		
 		if (SA1.Executing)
 		{
-			if (SA1.Flags & IRQ_PENDING_FLAG) S9xSA1CheckIRQ();
-			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
-			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
-			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
+		    if (__builtin_expect(SA1.Flags != 0, 0)) {
+		        if (SA1.Flags & IRQ_PENDING_FLAG) S9xSA1CheckIRQ();
+		    }
+		    (*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
+		    (*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
+		    (*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
 		}
 	
 		if (CPU.Flags) {
