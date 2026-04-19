@@ -156,7 +156,11 @@ void S9xFixSA1AfterSnapshotLoad ();
 INLINE uint8 S9xSA1GetByteFast (uint32 address)
 {
     uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-    if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+    // Hot path: direct memory via pointer. Slow path is the register /
+    // BWRAM-bitmap dispatch in S9xSA1GetByteSlow. Direct-memory reads
+    // dominate the SA1 opcode stream, so mark the fast side LIKELY for
+    // correct code layout.
+    if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
 	    return (*(GetAddress + (address & 0xffff)));
     else
         return S9xSA1GetByteSlow(address, (int)GetAddress);
@@ -166,7 +170,9 @@ INLINE void S9xSA1SetByteFast (uint8 byte, uint32 address)
 {
     uint8 *Setaddress = SA1.WriteMap [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
 
-    if (Setaddress >= (uint8 *) CMemory::MAP_LAST)
+    // See S9xSA1GetByteFast: direct memory is the hot path, register
+    // dispatch via S9xSA1SetByteSlow is the cold path.
+    if (LIKELY(Setaddress >= (uint8 *) CMemory::MAP_LAST))
     {
         *(Setaddress + (address & 0xffff)) = byte;
         return;
