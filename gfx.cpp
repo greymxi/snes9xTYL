@@ -2540,11 +2540,22 @@ PROF_START(11);
 	{
 		asmClearScreenFast16(GPUPack.GFX.Screen,starty,endy,back);	
 	}
-		
-	if ((os9x_ShowSub==4)&&(ADD_OR_SUB_ON_ANYTHING)
-		&& ( (GPUPack.GFX.r2130 & 0x30) != 0x30)
-		&& ( !((GPUPack.GFX.r2130 & 0x30) == 0x10) && ( IPPU.Clip[1].Count[5] == 0))
-		&& ANYTHING_ON_SUB /*hack*/ )
+	
+	// Color math is active and layers are on the sub-screen.  The correct
+	// render path (further below) needs the sub-screen buffer cleared so
+	// that the compositor can tell "nothing sub-drew here" from "sub drew
+	// a black pixel here".  This used to gate on os9x_ShowSub==4 only,
+	// which meant Super Metroid's color-math rooms (Chozo statues, the
+	// acid-statue room before them, Maridia) rendered with water/sky only
+	// unless the user happened to have ShowSub set to 4.  The gate now
+	// triggers automatically whenever color math is actually in use.
+	bool colourMathNeedsSubScreen =
+		(ADD_OR_SUB_ON_ANYTHING)
+		&& ( (GPUPack.GFX.r2130 & 0x30) != 0x30 )
+		&& ( !((GPUPack.GFX.r2130 & 0x30) == 0x10) && ( IPPU.Clip[1].Count[5] == 0 ) )
+		&& ANYTHING_ON_SUB;
+	
+	if (colourMathNeedsSubScreen)
 	{
 		asmClearScreenFast16(GPUPack.GFX.SubScreen,starty,endy,/*back*/0);
 	}
@@ -2580,10 +2591,7 @@ PROF_END(11);
 	    OB_SUB = ON_SUB(4);// &&  os9x_OBJ;
 	} else BG0_SUB=BG1_SUB=BG2_SUB=BG3_SUB=OB_SUB=0;
 	
-	if ((os9x_ShowSub==4)&&(ADD_OR_SUB_ON_ANYTHING)
-			&& ( (GPUPack.GFX.r2130 & 0x30) != 0x30)
-			&& ( !((GPUPack.GFX.r2130 & 0x30) == 0x10) && ( IPPU.Clip[1].Count[5] == 0))
-			&& ANYTHING_ON_SUB /*hack*/)
+	if (colourMathNeedsSubScreen)
 	{
 	
 		if (PPUPack.PPU.BGMode <= 1)
