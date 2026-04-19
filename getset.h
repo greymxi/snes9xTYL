@@ -109,7 +109,11 @@ INLINE uint8 S9xGetByte (uint32 Address)
         CPU.Cycles += CPU.MemorySpeed [block];
 #endif
 
-    if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+    // Hot path: direct memory (ROM/RAM/SRAM/etc.) via pointer.
+    // Slow path: hardware register dispatch. Registers are touched rarely
+    // compared to code fetches and data loads, so mark the fast side LIKELY
+    // to give the compiler a correct code-layout hint.
+    if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
 		return (*(GetAddress + (Address & 0xffff)));
 	else 
 		return S9xGetByteFromRegister(GetAddress, Address);
@@ -117,7 +121,7 @@ INLINE uint8 S9xGetByte (uint32 Address)
 
 INLINE uint16 S9xGetWord (uint32 Address)
 {
-    if ((Address & 0x0fff) != 0x0fff)
+    if (LIKELY((Address & 0x0fff) != 0x0fff))
 	{
    		int block;
    		uint8 *GetAddress = CPU.MemoryMap [block = (Address >> MEMMAP_SHIFT) & MEMMAP_MASK];
@@ -127,7 +131,9 @@ INLINE uint16 S9xGetWord (uint32 Address)
   	  	    CPU.Cycles += CPU.MemorySpeed [block] << 1;
 #endif
 
-		if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+		// Hot path: contiguous word read via direct pointer.
+		// Slow path: register dispatch. See S9xGetByte for the rationale.
+		if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
 		{
 #ifdef CPU_SHUTDOWN
 			if (Memory.BlockIsRAM [block])
@@ -158,7 +164,7 @@ INLINE void S9xSetByte (uint8 Byte, uint32 Address)
 		CPU.Cycles += CPU.MemorySpeed [block];
 #endif
 	
-    if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
+    if (LIKELY(SetAddress >= (uint8 *) CMemory::MAP_LAST))
     {
 		*(SetAddress + (Address & 0xffff)) = Byte;
 #ifdef CPU_SHUTDOWN
@@ -168,7 +174,7 @@ INLINE void S9xSetByte (uint8 Byte, uint32 Address)
 		// the vast majority of writes also miss this path, so the branch
 		// is kept cold. The computed address is cached in a local to avoid
 		// recomputing (SetAddress + (Address & 0xffff)) twice.
-		if (SA1.WaitByteAddress1)
+		if (UNLIKELY(SA1.WaitByteAddress1 != NULL))
 		{
 			uint8 *writeAddr = SetAddress + (Address & 0xffff);
 			if (writeAddr == SA1.WaitByteAddress1 ||
@@ -208,13 +214,13 @@ INLINE void S9xSetWord(uint16 Word, uint32 Address)
 		CPU.Cycles += CPU.MemorySpeed [block] << 1;
 #endif
 
-	if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
+	if (LIKELY(SetAddress >= (uint8 *) CMemory::MAP_LAST))
 	{
 #ifdef CPU_SHUTDOWN
 		// Same optimization as S9xSetByte: gate on WaitByteAddress1 being set
 		// (NULL for non-SA1 games and for SA1 games without a registered
 		// wake-up address), and compute the write address once into a local.
-		if (SA1.WaitByteAddress1)
+		if (UNLIKELY(SA1.WaitByteAddress1 != NULL))
 		{
 			uint8 *writeAddr = SetAddress + (Address & 0xffff);
 			if (writeAddr == SA1.WaitByteAddress1 ||
