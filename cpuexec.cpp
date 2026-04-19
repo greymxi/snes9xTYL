@@ -64,6 +64,17 @@ bool8 finishedFrame = false;
 #define IRQ_ACTIVE	CPU.IRQActive
 #endif
 
+// Branch prediction hints. Fall back to identity on non-GCC compilers so the
+// code remains portable. These are purely layout hints — semantics are
+// unchanged whether the hint is honoured or not.
+#if defined(__GNUC__) && !defined(LIKELY)
+#  define LIKELY(x)   __builtin_expect(!!(x), 1)
+#  define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#elif !defined(LIKELY)
+#  define LIKELY(x)   (x)
+#  define UNLIKELY(x) (x)
+#endif
+
 void (*S9x_Current_HBlank_Event)();
 void (*S9x_Current_Main_Loop_cpuexec)();
 void (*S9x_Current_HBLANK_END_EVENT)();
@@ -93,12 +104,14 @@ void S9xMainLoop_SA1_APU (void) {
 		
 		if (SA1.Executing)
 		{
-		    if (__builtin_expect(SA1.Flags != 0, 0)) {
-		        if (SA1.Flags & IRQ_PENDING_FLAG) S9xSA1CheckIRQ();
-		    }
-		    (*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
-		    (*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
-		    (*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
+			// Fold the IRQ check behind a single non-zero test on SA1.Flags,
+			// mirroring the main CPU's `if (CPU.Flags)` gate. The vast majority
+			// of iterations have no SA1 flags pending, so mark the branch cold
+			// to keep the three opcode dispatches on the straight-line path.
+			if (UNLIKELY(SA1.Flags & IRQ_PENDING_FLAG)) S9xSA1CheckIRQ();
+			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
+			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
+			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
 		}
 	
 		if (CPU.Flags) {
