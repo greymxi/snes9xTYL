@@ -64,17 +64,6 @@ bool8 finishedFrame = false;
 #define IRQ_ACTIVE	CPU.IRQActive
 #endif
 
-// Branch prediction hints. Fall back to identity on non-GCC compilers so the
-// code remains portable. These are purely layout hints — semantics are
-// unchanged whether the hint is honoured or not.
-#if defined(__GNUC__) && !defined(LIKELY)
-#  define LIKELY(x)   __builtin_expect(!!(x), 1)
-#  define UNLIKELY(x) __builtin_expect(!!(x), 0)
-#elif !defined(LIKELY)
-#  define LIKELY(x)   (x)
-#  define UNLIKELY(x) (x)
-#endif
-
 void (*S9x_Current_HBlank_Event)();
 void (*S9x_Current_Main_Loop_cpuexec)();
 void (*S9x_Current_HBLANK_END_EVENT)();
