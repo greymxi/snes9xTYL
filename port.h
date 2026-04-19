@@ -276,5 +276,17 @@ EXTERN_C void S9xGenerateSound ();
 #define yo_rand rand
 //int yo_rand(void);
 
+// Branch-prediction hints. Use LIKELY / UNLIKELY to annotate hot-path
+// conditionals so the compiler lays out the fall-through as the common case.
+// Fall back to identity for compilers without __builtin_expect. Semantics
+// are unchanged regardless of whether the hint is honoured.
+#if defined(__GNUC__) && !defined(LIKELY)
+#  define LIKELY(x)   __builtin_expect(!!(x), 1)
+#  define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#elif !defined(LIKELY)
+#  define LIKELY(x)   (x)
+#  define UNLIKELY(x) (x)
+#endif
+
 
 #endif
