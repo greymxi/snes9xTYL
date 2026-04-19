@@ -1166,8 +1166,8 @@ void DrawTile16New (uint32 Tile, uint32 Offset, uint32 StartLine, uint32 LineCou
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -1359,8 +1359,8 @@ void DrawClippedTile16New (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -1559,8 +1559,8 @@ void DrawTile16NewSprite (uint32 Tile, uint32 Offset, uint32 StartLine, uint32 L
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -1732,8 +1732,8 @@ void DrawClippedTile16NewSprite (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -1904,8 +1904,8 @@ void DrawHiResTile16New (uint32 Tile, uint32 Offset, uint32 StartLine, uint32 Li
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -2078,8 +2078,8 @@ void DrawHiResClippedTile16New (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -2253,8 +2253,8 @@ void DrawTile16ADDNew (uint32 Tile, uint32 Offset, uint32 StartLine, uint32 Line
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -2446,8 +2446,8 @@ void DrawClippedTile16ADDNew (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -2646,8 +2646,8 @@ void DrawTile16ADDNewSprite (uint32 Tile, uint32 Offset, uint32 StartLine, uint3
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -2819,8 +2819,8 @@ void DrawClippedTile16ADDNewSprite (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -2991,8 +2991,8 @@ void DrawHiResTile16ADDNew (uint32 Tile, uint32 Offset, uint32 StartLine, uint32
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -3165,8 +3165,8 @@ void DrawHiResClippedTile16ADDNew (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -3339,8 +3339,8 @@ void DrawTile16ADD1_2New (uint32 Tile, uint32 Offset, uint32 StartLine, uint32 L
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -3532,8 +3532,8 @@ void DrawClippedTile16ADD1_2New (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -3732,8 +3732,8 @@ void DrawTile16ADD1_2NewSprite (uint32 Tile, uint32 Offset, uint32 StartLine, ui
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -3905,8 +3905,8 @@ void DrawClippedTile16ADD1_2NewSprite (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -4077,8 +4077,8 @@ void DrawHiResTile16ADD1_2New (uint32 Tile, uint32 Offset, uint32 StartLine, uin
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -4251,8 +4251,8 @@ void DrawHiResClippedTile16ADD1_2New (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -4426,8 +4426,8 @@ void DrawTile16SUBNew (uint32 Tile, uint32 Offset, uint32 StartLine, uint32 Line
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -4619,8 +4619,8 @@ void DrawClippedTile16SUBNew (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -4819,8 +4819,8 @@ void DrawTile16SUBNewSprite (uint32 Tile, uint32 Offset, uint32 StartLine, uint3
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -4992,8 +4992,8 @@ void DrawClippedTile16SUBNewSprite (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -5164,8 +5164,8 @@ void DrawHiResTile16SUBNew (uint32 Tile, uint32 Offset, uint32 StartLine, uint32
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -5338,8 +5338,8 @@ void DrawHiResClippedTile16SUBNew (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -5512,8 +5512,8 @@ void DrawTile16SUB1_2New (uint32 Tile, uint32 Offset, uint32 StartLine, uint32 L
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -5705,8 +5705,8 @@ void DrawClippedTile16SUB1_2New (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -5905,8 +5905,8 @@ void DrawTile16SUB1_2NewSprite (uint32 Tile, uint32 Offset, uint32 StartLine, ui
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -6078,8 +6078,8 @@ void DrawClippedTile16SUB1_2NewSprite (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -6250,8 +6250,8 @@ void DrawHiResTile16SUB1_2New (uint32 Tile, uint32 Offset, uint32 StartLine, uin
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
@@ -6424,8 +6424,8 @@ void DrawHiResClippedTile16SUB1_2New (uint32 Tile, uint32 Offset,
     }
     else 
     {
-    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [(((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette];
     	Col = (((Tile >> 10) & BG.PaletteMask) << BG.PaletteShift) + BG.StartPalette;
+    	GPUPack.GFX.ScreenColors = &IPPU.ScreenColors [Col];
     }
     
     uint32 TileNumber;
