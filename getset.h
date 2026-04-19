@@ -201,18 +201,14 @@ INLINE void S9xSetWord(uint16 Word, uint32 Address)
 	if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
 	{
 #ifdef CPU_SHUTDOWN
-		if ((SetAddress + (Address & 0xffff)) == SA1.WaitByteAddress1 ||
-				(SetAddress + (Address & 0xffff)) == SA1.WaitByteAddress2)
-		{
-			if (!SA1.Executing)
-					SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
-			if (SA1.Executing) SA1.WaitCounter = 3;
-		}       
-#ifdef FAST_LSB_WORD_ACCESS
-	*(uint16 *) SetAddress = Word;
-#else
-	*(SetAddress + (Address & 0xffff)) = (uint8) Word;
-	*(SetAddress + ((Address + 1) & 0xffff)) = Word >> 8;
+    uint8 *addr = SetAddress + (Address & 0xffff);
+    if (__builtin_expect(SA1.WaitByteAddress1 != NULL, 0) &&
+        (addr == SA1.WaitByteAddress1 || addr == SA1.WaitByteAddress2))
+    {
+        if (!SA1.Executing)
+            SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
+        if (SA1.Executing) SA1.WaitCounter = 3;
+    }
 #endif
 #else
 #ifdef FAST_LSB_WORD_ACCESS
