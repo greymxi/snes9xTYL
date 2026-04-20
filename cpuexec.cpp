@@ -85,13 +85,18 @@ void S9xMainLoop_SA1_APU (void) {
 	#endif
 			(*S9x_Current_HBlank_Event)();
 			
-			if (finishedFrame) return;
+			// End-of-frame happens once per ~60k iterations. Keep it cold
+			// so the predictor doesn't waste an entry on it.
+			if (UNLIKELY(finishedFrame)) return;
 		}
 		
 		CPU.Cycles += CPU.MemSpeed;
 		(*ICPU.S9xOpcodes [*CPU.PC++].S9xOpcode)();
 		
-		if (SA1.Executing)
+		// SA1 is Executing on essentially every iteration for SA1 games
+		// (the only time it's not is during SA1 reset or when the game
+		// explicitly halts via register $2200). Hint accordingly.
+		if (LIKELY(SA1.Executing))
 		{
 			// Fold the IRQ check behind a single non-zero test on SA1.Flags,
 			// mirroring the main CPU's `if (CPU.Flags)` gate. The vast majority
@@ -103,7 +108,10 @@ void S9xMainLoop_SA1_APU (void) {
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
 		}
 	
-		if (CPU.Flags) {
+		// Main CPU flags are clear on the overwhelming majority of iterations
+		// — NMI fires once per frame, IRQs are rare, SCAN_KEYS_FLAG fires
+		// once per frame at vblank. Everything inside this block is cold.
+		if (UNLIKELY(CPU.Flags)) {
 			if (CPU.Flags & NMI_FLAG)
 				if (--CPU.NMICycleCount == 0){
 					CPU.Flags &= ~NMI_FLAG;
@@ -136,13 +144,16 @@ void S9xMainLoop_NoSA1_APU (void) {
 	#endif
 			(*S9x_Current_HBlank_Event)();
 			
-			if (finishedFrame) return;
+			if (UNLIKELY(finishedFrame)) return;
 		}
 		
 		CPU.Cycles += CPU.MemSpeed;
 		(*ICPU.S9xOpcodes [*CPU.PC++].S9xOpcode)();
 	
-		if (CPU.Flags) {
+		// See S9xMainLoop_SA1_APU: CPU.Flags is zero on nearly every
+		// iteration; mark the interrupt-handling block cold to keep the
+		// hot opcode-dispatch path straight.
+		if (UNLIKELY(CPU.Flags)) {
 			if (CPU.Flags & NMI_FLAG)
 				if (--CPU.NMICycleCount == 0){
 					CPU.Flags &= ~NMI_FLAG;
