@@ -80,15 +80,6 @@
 #include "ppu.h"
 #include "c4.h"
 
-// Explicit prototype: despite memmap.h being included above, S9xGetMemPointer
-// is not visible to this TU under this toolchain (psp-g++ 15.x). The symbol is
-// defined inline in getset.h and declared in memmap.h, but the include chain
-// does not reliably expose it here. Declaring it at file scope with C++ linkage
-// matches memmap.h:259 and is harmless: if getset.h's inline definition does
-// get expanded in this TU, the inline body provides the implementation; if not,
-// the linker resolves to the instance emitted from any TU where getset.h did
-// expand (e.g. memmap.cpp, dma.cpp). Multiple identical declarations are legal.
-uint8 *S9xGetMemPointer (uint32 Address);
 
 static int16 C4SinTable[512] = {
 	    0,    402,    804,   1206,   1607,   2009,   2410,   2811,
