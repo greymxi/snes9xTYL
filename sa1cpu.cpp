@@ -156,7 +156,9 @@ void S9xSA1CheckIRQ()
 {
 	if (SA1.IRQActive)
 	{
-	    if (SA1.WaitingForInterrupt)
+	    // WAI on the SA1 is rare in practice — most SA1 code polls rather
+	    // than waits. Mark the wake-up branch cold.
+	    if (UNLIKELY(SA1.WaitingForInterrupt))
 	    {
 		SA1.WaitingForInterrupt = FALSE;
 		SA1.PC++;
@@ -166,4 +168,4 @@ void S9xSA1CheckIRQ()
 	}
 	else
 	    SA1.Flags &= ~IRQ_PENDING_FLAG;    
-}	
+}
