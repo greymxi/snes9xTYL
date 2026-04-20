@@ -149,7 +149,9 @@ void S9xFixSA1AfterSnapshotLoad ()
 uint8 S9xSA1GetByte (uint32 address)
 {
     uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-    if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+    // Hot path: direct memory via map pointer. The long switch below is
+    // for the register / BWRAM-bitmap dispatches and is hit far less often.
+    if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
 	return (*(GetAddress + (address & 0xffff)));
 
     switch ((int) GetAddress)
@@ -221,7 +223,9 @@ uint16 S9xSA1GetWord (uint32 address)
 {
 	//return (S9xSA1GetByte (address) | (S9xSA1GetByte (address + 1) << 8));
     uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-    if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+    // Hot path: word read straight out of mapped memory. Slow path dispatches
+    // to two S9xSA1GetByte calls for register/bitmap regions.
+    if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
 		return (*(GetAddress + ((address+1) & 0xffff)))<<8 | (*(GetAddress + (address & 0xffff)));
 	else
 		return (S9xSA1GetByte (address) | (S9xSA1GetByte (address + 1) << 8));
@@ -231,7 +235,8 @@ void S9xSA1SetByte (uint8 byte, uint32 address)
 {
     uint8 *Setaddress = SA1.WriteMap [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
 
-    if (Setaddress >= (uint8 *) CMemory::MAP_LAST)
+    // Hot path: direct memory write. Register and bitmap dispatches follow.
+    if (LIKELY(Setaddress >= (uint8 *) CMemory::MAP_LAST))
     {
 	*(Setaddress + (address & 0xffff)) = byte;
 	return;
@@ -356,7 +361,10 @@ void S9xSA1SetWord (uint16 Word, uint32 address)
 void S9xSA1SetPCBase (uint32 address)
 {
     uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-    if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+    // Hot path: PC lands in a ROM/RAM block, set base and address directly.
+    // The slow switch below only runs for the rare cases where SA1 branches
+    // into a PPU/CPU/DSP/BWRAM/SRAM region (which is legal but uncommon).
+    if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
     {
 	SA1.PCBase = GetAddress;
 	SA1.PC = GetAddress + (address & 0xffff);
