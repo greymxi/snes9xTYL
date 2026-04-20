@@ -2433,8 +2433,20 @@ void S9xUpdateScreen (){
 		ResetClipWindowsFix();
 		return;
   case 3:
-	  	if ((IPPU.ClipFixMaxCount>1 || IPPU.MainColorCount>0 || IPPU.FixColorCount>0 || (endy-starty+1>=PSP_GU_RENDER_MIN_UPDATED_LINES))&&
-			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
+	  	// Always use the PSP GPU path for mode 3. The previous code fell back to
+	  	// a software + __memcpy4a shortcut when a screen-update chunk was small
+	  	// (<PSP_GU_RENDER_MIN_UPDATED_LINES scanlines) and there were no
+	  	// clip-window / colour-math lines pending, on the theory that setting up
+	  	// the GU for a tiny chunk cost more than just doing it in software.
+	  	// That shortcut created a buffer-coherency hazard: mid-frame HUD updates
+	  	// in fighting games (health bars, timers, hit sparks) produce exactly
+	  	// these tiny chunks, and the software memcpy-path races with any GPU
+	  	// work still pending from a previous chunk — causing the HUD to flicker
+	  	// or glitch intermittently. DBZ Hyper Dimension was a reliable repro.
+	  	// The small extra GU setup cost on a few tiny chunks per frame is worth
+	  	// correct compositing. BGOffset-mode and mode7 dispatches still route
+	  	// through the same GU path below.
+	  	if (!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
 			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==4))																	  // BGOffset Mode
 			&&(PPUPack.PPU.BGMode!=7)
 			)
@@ -2470,8 +2482,12 @@ void S9xUpdateScreen (){
 		ResetClipWindowsFix();
 		return;
 	case 4:
-	  	if ((IPPU.ClipFixMaxCount>1 || IPPU.MainColorCount>0 || IPPU.FixColorCount>0 || (endy-starty+1>=PSP_GU_RENDER_MIN_UPDATED_LINES))&&
-			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
+	  	// Same HUD-glitch fix as mode 3: always use the GPU path rather than
+	  	// the small-chunk software fallback below. Mode 4's fallback was worse
+	  	// than mode 3's — the else branch was empty, dropping into the generic
+	  	// software path at the bottom of the function with starty/endy still
+	  	// set to the tiny chunk range, producing an inconsistent hybrid state.
+	  	if (!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
 			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==4))																	  // BGOffset Mode
 			&&(PPUPack.PPU.BGMode!=7))
 		{							//mode 7
