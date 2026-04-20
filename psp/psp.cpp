@@ -1,4 +1,4 @@
- #define PASSWORD_XORED "watashihaos9xpspdesu."
+#define PASSWORD_XORED "watashihaos9xpspdesu."
 
 /*******************************************************************************
   Snes9x - Portable Super Nintendo Entertainment System (TM) emulator.
@@ -132,6 +132,7 @@ extern const unsigned char support_qr_coffee[];
 #include "gfx.h"
 #include "soundux.h"
 #include "spc700.h"
+#include "cpuexec.h"
 #include "psp/counter.h"
 //#include "spc7110.h"
 
