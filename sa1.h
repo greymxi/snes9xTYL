@@ -183,7 +183,28 @@ INLINE void S9xSA1SetByteFast (uint8 byte, uint32 address)
 
 inline uint16 S9xSA1GetWordFast (uint32 address)
 {
-    return (S9xSA1GetByteFast (address) | (S9xSA1GetByteFast (address + 1) << 8));
+    // Fast path: both bytes in the same 64KB block. Boundary case falls
+    // through to two S9xSA1GetByteFast calls.
+    if (LIKELY((address & 0xffff) != 0xffff))
+    {
+        uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
+        if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
+        {
+#ifdef CPU_SHUTDOWN
+            // Set WaitAddress so CPUShutdown() can detect SA1 idle loops.
+            // The SA1 fetches opcodes as words; if it branches back to the
+            // same fetch address repeatedly, CPUShutdown() suspends SA1
+            // execution until the SNES CPU wakes it via WaitByteAddress.
+            // Mirrors the Memory.BlockIsRAM path in S9xGetWord for the
+            // main CPU — except we always set it since all SA1 RAM is
+            // direct-mapped and there is no BlockIsRAM table for the SA1.
+            SA1.WaitAddress = SA1.PCAtOpcodeStart;
+#endif
+            return (*(GetAddress + (address & 0xffff))) |
+                   (*(GetAddress + (address & 0xffff) + 1) << 8);
+        }
+    }
+    return (S9xSA1GetByte (address) | (S9xSA1GetByte (address + 1) << 8));
 }
 
 inline void  S9xSA1SetWordFast (uint16 Word, uint32 address)
