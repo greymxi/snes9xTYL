@@ -71,49 +71,23 @@ extern "C" void asmClearScreenFast8(uint8 *scr,uint32 starty,uint32 endy,uint32 
 extern "C" void asmClearBufferFast32_16(uint8 *buf,uint32 val,uint32 size);*/
 inline void asmClearBufferFast32_16(uint8 *buf,uint32 val,uint32 size)
 {
-	// Write 32 bits at a time instead of 8 (val is uint32 already).
-	// Callers pass byte-count sizes; round down to 4-byte stores then tail.
-	uint32 *p = (uint32*)buf;
-	uint32 words = size >> 2;
-	uint32 tail  = size & 3;
-	while (words >= 8) {
-		p[0]=val; p[1]=val; p[2]=val; p[3]=val;
-		p[4]=val; p[5]=val; p[6]=val; p[7]=val;
-		p += 8;
-		words -= 8;
-	}
-	while (words) { *p++ = val; words--; }
-	uint8 *b = (uint8*)p;
-	while (tail) { *b++ = (uint8)val; tail--; }
+	for (;size;size--)
+		*buf++=val;
 }
 inline void asmClearScreenFast16(uint8 *scr,uint32 starty,uint32 endy,uint32 back)
 {
-	// One SNES scanline at 16bpp = 256*2 = 512 bytes = 128 uint32 words.
-	// 128 is divisible by 8, so an 8x unroll has no tail when clearing
-	// whole scanlines (which is the only way this is called).
-	int sizey = endy - starty + 1;
-	uint32 *p = (uint32*)(scr + starty * 256 * 2);
-	int words = sizey * 128;		// 128 words per scanline
-	int blocks = words >> 3;		// always exact
-	while (blocks--) {
-		p[0]=back; p[1]=back; p[2]=back; p[3]=back;
-		p[4]=back; p[5]=back; p[6]=back; p[7]=back;
-		p += 8;
-	}
+	int sizey=endy-starty+1;
+	uint32 *p=(uint32*)(scr+starty*256*2);
+	for (int i=(sizey*256*2>>2);i;i--)
+		*p++=back;
 }
 inline void asmClearScreenFast8(uint8 *scr,uint32 starty,uint32 endy,uint32 back)
 {
-	// One SNES scanline at 8bpp (Z-buffer) = 256 bytes = 64 uint32 words.
-	// 64 is divisible by 8, so an 8x unroll has no tail.
-	int sizey = endy - starty + 1;
-	uint32 *p = (uint32*)(scr + starty * 256);
-	int words = sizey * 64;			// 64 words per scanline
-	int blocks = words >> 3;		// always exact
-	while (blocks--) {
-		p[0]=back; p[1]=back; p[2]=back; p[3]=back;
-		p[4]=back; p[5]=back; p[6]=back; p[7]=back;
-		p += 8;
-	}
+	int sizey=endy-starty+1;
+	uint32 *p=(uint32*)(scr+starty*256);
+	for (int i=(sizey*256>>2);i;i--)
+		*p++=back;
+
 }
 
 
@@ -2390,10 +2364,18 @@ void S9xUpdateScreen (){
 	  {
 			ComputeClipWindows ();
 			PPUPack.PPU.RecomputeClipWindows = FALSE;		
-	  }	
-	  else //if(IPPU.ClipFixMaxCount!=0)
+	  }
+	  else if (PPUPack.PPU.RecomputeClipWindows)
+	  {
+		  // Mid-frame window register change with existing ClipFix data:
+		  // record the new clip state for this scanline range.
 		  ComputeClipWindowsFix ();
-
+	  }
+	  // If RecomputeClipWindows is FALSE, nothing changed — skip both paths.
+	  // Previously the else fired unconditionally, calling ComputeClipWindowsFix()
+	  // on every scanline even with no register changes. This rapidly inflated
+	  // ClipFixMaxCount toward 255, after which all mid-frame updates were
+	  // silently dropped by the >= 255 guard in ComputeClipWindowsFix().
   }
   
   
@@ -2433,20 +2415,8 @@ void S9xUpdateScreen (){
 		ResetClipWindowsFix();
 		return;
   case 3:
-	  	// Always use the PSP GPU path for mode 3. The previous code fell back to
-	  	// a software + __memcpy4a shortcut when a screen-update chunk was small
-	  	// (<PSP_GU_RENDER_MIN_UPDATED_LINES scanlines) and there were no
-	  	// clip-window / colour-math lines pending, on the theory that setting up
-	  	// the GU for a tiny chunk cost more than just doing it in software.
-	  	// That shortcut created a buffer-coherency hazard: mid-frame HUD updates
-	  	// in fighting games (health bars, timers, hit sparks) produce exactly
-	  	// these tiny chunks, and the software memcpy-path races with any GPU
-	  	// work still pending from a previous chunk — causing the HUD to flicker
-	  	// or glitch intermittently. DBZ Hyper Dimension was a reliable repro.
-	  	// The small extra GU setup cost on a few tiny chunks per frame is worth
-	  	// correct compositing. BGOffset-mode and mode7 dispatches still route
-	  	// through the same GU path below.
-	  	if (!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
+	  	if ((IPPU.ClipFixMaxCount>1 || IPPU.MainColorCount>0 || IPPU.FixColorCount>0 || (endy-starty+1>=PSP_GU_RENDER_MIN_UPDATED_LINES))&&
+			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
 			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==4))																	  // BGOffset Mode
 			&&(PPUPack.PPU.BGMode!=7)
 			)
@@ -2482,12 +2452,8 @@ void S9xUpdateScreen (){
 		ResetClipWindowsFix();
 		return;
 	case 4:
-	  	// Same HUD-glitch fix as mode 3: always use the GPU path rather than
-	  	// the small-chunk software fallback below. Mode 4's fallback was worse
-	  	// than mode 3's — the else branch was empty, dropping into the generic
-	  	// software path at the bottom of the function with starty/endy still
-	  	// set to the tiny chunk range, producing an inconsistent hybrid state.
-	  	if (!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
+	  	if ((IPPU.ClipFixMaxCount>1 || IPPU.MainColorCount>0 || IPPU.FixColorCount>0 || (endy-starty+1>=PSP_GU_RENDER_MIN_UPDATED_LINES))&&
+			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==2)&&(!Settings.WrestlemaniaArcade)) &&  // BGOffset Mode
 			!((os9x_hack&OLD_PSP_ACCEL)&&(PPUPack.PPU.BGMode==4))																	  // BGOffset Mode
 			&&(PPUPack.PPU.BGMode!=7))
 		{							//mode 7
@@ -2556,22 +2522,11 @@ PROF_START(11);
 	{
 		asmClearScreenFast16(GPUPack.GFX.Screen,starty,endy,back);	
 	}
-	
-	// Color math is active and layers are on the sub-screen.  The correct
-	// render path (further below) needs the sub-screen buffer cleared so
-	// that the compositor can tell "nothing sub-drew here" from "sub drew
-	// a black pixel here".  This used to gate on os9x_ShowSub==4 only,
-	// which meant Super Metroid's color-math rooms (Chozo statues, the
-	// acid-statue room before them, Maridia) rendered with water/sky only
-	// unless the user happened to have ShowSub set to 4.  The gate now
-	// triggers automatically whenever color math is actually in use.
-	bool colourMathNeedsSubScreen =
-		(ADD_OR_SUB_ON_ANYTHING)
-		&& ( (GPUPack.GFX.r2130 & 0x30) != 0x30 )
-		&& ( !((GPUPack.GFX.r2130 & 0x30) == 0x10) && ( IPPU.Clip[1].Count[5] == 0 ) )
-		&& ANYTHING_ON_SUB;
-	
-	if (colourMathNeedsSubScreen)
+		
+	if ((os9x_ShowSub==4)&&(ADD_OR_SUB_ON_ANYTHING)
+		&& ( (GPUPack.GFX.r2130 & 0x30) != 0x30)
+		&& ( !((GPUPack.GFX.r2130 & 0x30) == 0x10) && ( IPPU.Clip[1].Count[5] == 0))
+		&& ANYTHING_ON_SUB /*hack*/ )
 	{
 		asmClearScreenFast16(GPUPack.GFX.SubScreen,starty,endy,/*back*/0);
 	}
@@ -2607,7 +2562,10 @@ PROF_END(11);
 	    OB_SUB = ON_SUB(4);// &&  os9x_OBJ;
 	} else BG0_SUB=BG1_SUB=BG2_SUB=BG3_SUB=OB_SUB=0;
 	
-	if (colourMathNeedsSubScreen)
+	if ((os9x_ShowSub==4)&&(ADD_OR_SUB_ON_ANYTHING)
+			&& ( (GPUPack.GFX.r2130 & 0x30) != 0x30)
+			&& ( !((GPUPack.GFX.r2130 & 0x30) == 0x10) && ( IPPU.Clip[1].Count[5] == 0))
+			&& ANYTHING_ON_SUB /*hack*/)
 	{
 	
 		if (PPUPack.PPU.BGMode <= 1)
@@ -2617,75 +2575,71 @@ PROF_END(11);
 	    	{
 	    		
 	    		GPUPack.GFX.S = GPUPack.GFX.SubScreen;
-	    		GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];
-	    		if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
-				if (OB_SUB)	{if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}				
-				if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
-				if (OB_SUB)	{if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB_SUB)	{if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}																		
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}				
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+	    		if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
+				if (OB_SUB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}				
+				if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
+				if (OB_SUB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB_SUB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}																		
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}				
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
 				
 				asmClearScreenFast8(GPUPack.GFX.ZBuffer,starty,endy,0xFFFFFFFF);	
 				asmClearScreenFast8(GPUPack.GFX.SubZBuffer,starty,endy,0);	
 				
 	    		GPUPack.GFX.S = GPUPack.GFX.Screen;	    		
-	    		GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];
 
-		    	if (BG3 && PPUPack.PPU.BGMode == 0)	{os9x_SetTileRender(SUB_OR_ADD(3));DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
-				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
-				if (OB)	{os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (0,TRUE);else DrawOBJSFastNew(0);}				
-				if (BG3 && PPUPack.PPU.BGMode == 0)	{os9x_SetTileRender(SUB_OR_ADD(3));DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
-				if (OB)	{os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (1,TRUE);else DrawOBJSFastNew(1);}
-				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
-				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB)	{os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (2,TRUE);else DrawOBJSFastNew(2);}																		
-				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
-				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
-				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (3,TRUE);else DrawOBJSFastNew(3);}				
-				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+		    	if (BG3 && PPUPack.PPU.BGMode == 0)	{os9x_SetTileRender(SUB_OR_ADD(3));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
+				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
+				if (OB)	{os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (0,TRUE);else DrawOBJSFastNew(0);}				
+				if (BG3 && PPUPack.PPU.BGMode == 0)	{os9x_SetTileRender(SUB_OR_ADD(3));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
+				if (OB)	{os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (1,TRUE);else DrawOBJSFastNew(1);}
+				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
+				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB)	{os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (2,TRUE);else DrawOBJSFastNew(2);}																		
+				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
+				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
+				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (3,TRUE);else DrawOBJSFastNew(3);}				
+				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
 				
 
 	    	}
 	    	else
 	    	{	
 		    	GPUPack.GFX.S = GPUPack.GFX.SubScreen;
-		    	GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];
-		    	if (BG3_SUB && PPUPack.PPU.BGMode == 0){DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}
-				if (BG3_SUB && PPUPack.PPU.BGMode == 0){DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
+		    	if (BG3_SUB && PPUPack.PPU.BGMode == 0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}
+				if (BG3_SUB && PPUPack.PPU.BGMode == 0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
 	    	    	    
 	    	    asmClearScreenFast8(GPUPack.GFX.ZBuffer,starty,endy,0xFFFFFFFF);
 	    	    asmClearScreenFast8(GPUPack.GFX.SubZBuffer,starty,endy,0);	
 				GPUPack.GFX.S = GPUPack.GFX.Screen;
-				GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];
 
-			    if (BG3 && PPUPack.PPU.BGMode == 0){os9x_SetTileRender(SUB_OR_ADD(3));DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
-				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
-				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (0,TRUE);else DrawOBJSFastNew(0);}
-				if (BG3 && PPUPack.PPU.BGMode == 0){os9x_SetTileRender(SUB_OR_ADD(3));DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
-				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
-				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (1,TRUE);else DrawOBJSFastNew(1);}
-				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
-				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (2,TRUE);else DrawOBJSFastNew(2);}
-				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
-				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
-				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (3,TRUE);else DrawOBJSFastNew(3);}
+			    if (BG3 && PPUPack.PPU.BGMode == 0){os9x_SetTileRender(SUB_OR_ADD(3));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
+				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
+				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (0,TRUE);else DrawOBJSFastNew(0);}
+				if (BG3 && PPUPack.PPU.BGMode == 0){os9x_SetTileRender(SUB_OR_ADD(3));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
+				if (BG2){os9x_SetTileRender(SUB_OR_ADD(2));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (1,TRUE);else DrawOBJSFastNew(1);}
+				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
+				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (2,TRUE);else DrawOBJSFastNew(2);}
+				if (BG1){os9x_SetTileRender(SUB_OR_ADD(1));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
+				if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
+				if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (3,TRUE);else DrawOBJSFastNew(3);}
 				
 
 			}			
@@ -2693,30 +2647,28 @@ PROF_END(11);
 	    else if (PPUPack.PPU.BGMode != 7)
 	    {	
 		    GPUPack.GFX.S = GPUPack.GFX.SubScreen;
-		    GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];
-		    if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}			
-			if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-			if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}			
-			if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
+		    if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}			
+			if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+			if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}			
+			if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
 	    
 	        asmClearScreenFast8(GPUPack.GFX.ZBuffer,starty,endy,0xFFFFFFFF);
 	        asmClearScreenFast8(GPUPack.GFX.SubZBuffer,starty,endy,0);	
 		    GPUPack.GFX.S = GPUPack.GFX.Screen;
-		    GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];
 		    
 
-	        if (BG1&&(PPUPack.PPU.BGMode!=6)){os9x_SetTileRender(SUB_OR_ADD(1));DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
-			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (0,TRUE);else DrawOBJSFastNew(0);}			
-			if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
-			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (1,TRUE);else DrawOBJSFastNew(1);}
-			if (BG1&&(PPUPack.PPU.BGMode!=6)){os9x_SetTileRender(SUB_OR_ADD(1));DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
-			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (2,TRUE);else DrawOBJSFastNew(2);}			
-			if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
-			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));if (!os9x_fastsprite) DrawOBJSNew (3,TRUE);else DrawOBJSFastNew(3);}
+	        if (BG1&&(PPUPack.PPU.BGMode!=6)){os9x_SetTileRender(SUB_OR_ADD(1));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
+			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (0,TRUE);else DrawOBJSFastNew(0);}			
+			if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
+			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (1,TRUE);else DrawOBJSFastNew(1);}
+			if (BG1&&(PPUPack.PPU.BGMode!=6)){os9x_SetTileRender(SUB_OR_ADD(1));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
+			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (2,TRUE);else DrawOBJSFastNew(2);}			
+			if (BG0){os9x_SetTileRender(SUB_OR_ADD(0));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
+			if (OB){os9x_SetTileRender(SUB_OR_ADD(4));GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (3,TRUE);else DrawOBJSFastNew(3);}
 			
 
 	    }
@@ -2852,86 +2804,81 @@ PROF_END(11);
 			
 	    	if (ROM_GLOBAL [0x2105] & 8)
 	    	{
-	    		GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];
-	    		if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
-				if (OB_SUB)	{if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}				
-				if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
-				if (OB_SUB)	{if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB_SUB)	{if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}																		
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}				
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+	    		if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
+				if (OB_SUB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}				
+				if (BG3_SUB && PPUPack.PPU.BGMode == 0)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
+				if (OB_SUB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB_SUB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}																		
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}				
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
 	    	
-	    		GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];
-		    	if (BG3 && PPUPack.PPU.BGMode == 0)	{DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
-				if (BG2){DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
-				if (OB)	{if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}				
-				if (BG3 && PPUPack.PPU.BGMode == 0)	{DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
-				if (OB)	{if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-				if (BG1){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
-				if (BG0){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB)	{if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}																		
-				if (BG1){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
-				if (BG0){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
-				if (OB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}				
-				if (BG2){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+	    	
+		    	if (BG3 && PPUPack.PPU.BGMode == 0)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3,0);}
+				if (BG2){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2,0);}
+				if (OB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}				
+				if (BG3 && PPUPack.PPU.BGMode == 0)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}				
+				if (OB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+				if (BG1){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}				
+				if (BG0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB)	{GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}																		
+				if (BG1){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}						
+				if (BG0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}				
+				if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}				
+				if (BG2){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
 	    	}
 	    	else
 	    	{	
-		    	GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];
-		    	if (BG3_SUB && PPUPack.PPU.BGMode == 0){DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}
-				if (BG3_SUB && PPUPack.PPU.BGMode == 0){DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
-				if (BG2_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}
-				if (BG1_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
-				if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
-				if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
+		    	if (BG3_SUB && PPUPack.PPU.BGMode == 0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}
+				if (BG3_SUB && PPUPack.PPU.BGMode == 0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
+				if (BG2_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}
+				if (BG1_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
+				if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
+				if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
 	    	    	    
-	    	    GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];
-			    if (BG3 && PPUPack.PPU.BGMode == 0){DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
-				if (BG2){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
-				if (OB){if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}
-				if (BG3 && PPUPack.PPU.BGMode == 0){DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
-				if (BG2){DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
-				if (OB){if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-				if (BG1){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
-				if (BG0){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
-				if (OB){if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}
-				if (BG1){DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
-				if (BG0){DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
-				if (OB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
+			    if (BG3 && PPUPack.PPU.BGMode == 0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 0);}
+				if (BG2){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 0);}
+				if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}
+				if (BG3 && PPUPack.PPU.BGMode == 0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 3, 1);}
+				if (BG2){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 2, 1);}
+				if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+				if (BG1){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 0);}
+				if (BG0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 0);}
+				if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}
+				if (BG1){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1, 1);}
+				if (BG0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0, 1);}
+				if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
 			}			
 	    }
 	    else if (PPUPack.PPU.BGMode != 7)
 	    {	
-		    GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];
-		    if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}			
-			if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-			if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}			
-			if (BG0_SUB){DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
-			if (OB_SUB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
+		    if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}			
+			if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+			if (BG1_SUB&&(PPUPack.PPU.BGMode!=6)){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}			
+			if (BG0_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
+			if (OB_SUB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [1];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
 	    
-	        GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];
-	        if (BG1&&(PPUPack.PPU.BGMode!=6)){DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
-			if (OB){if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}			
-			if (BG0){DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
-			if (OB){if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
-			if (BG1&&(PPUPack.PPU.BGMode!=6)){DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
-			if (OB){if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}			
-			if (BG0){DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
-			if (OB){if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
+	        if (BG1&&(PPUPack.PPU.BGMode!=6)){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,0);}
+			if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (0);else DrawOBJSFastNew(0);}			
+			if (BG0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,0);}
+			if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (1);else DrawOBJSFastNew(1);}
+			if (BG1&&(PPUPack.PPU.BGMode!=6)){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 1,1);}
+			if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (2);else DrawOBJSFastNew(2);}			
+			if (BG0){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];DrawBackgroundNew (PPUPack.PPU.BGMode, 0,1);}
+			if (OB){GPUPack.GFX.pCurrentClip = &IPPU.Clip [0];if (!os9x_fastsprite) DrawOBJSNew (3);else DrawOBJSFastNew(3);}
 	    }
 	    else	    
 	    {
