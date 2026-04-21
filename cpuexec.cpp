@@ -102,12 +102,6 @@ void S9xMainLoop_SA1_APU (void) {
 			// mirroring the main CPU's `if (CPU.Flags)` gate. The vast majority
 			// of iterations have no SA1 flags pending, so mark the branch cold
 			// to keep the three opcode dispatches on the straight-line path.
-#ifdef CPU_SHUTDOWN
-			// Record where this SA1 opcode fetch started so CPUShutdown()
-			// can compare against SA1.WaitAddress (set in S9xSA1GetWordFast)
-			// to detect idle loops and suspend the SA1 until woken.
-			SA1.PCAtOpcodeStart = SA1.PC;
-#endif
 			if (UNLIKELY(SA1.Flags & IRQ_PENDING_FLAG)) S9xSA1CheckIRQ();
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
 			(*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode) ();
