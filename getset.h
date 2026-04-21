@@ -1,1015 +1,356 @@
-/*
- * Snes9x - Portable Super Nintendo Entertainment System (TM) emulator.
- *
- * (c) Copyright 1996 - 2001 Gary Henderson (gary.henderson@ntlworld.com) and
- *                           Jerremy Koot (jkoot@snes9x.com)
- *
- * Super FX C emulator code 
- * (c) Copyright 1997 - 1999 Ivar (ivar@snes9x.com) and
- *                           Gary Henderson.
- * Super FX assembler emulator code (c) Copyright 1998 zsKnight and _Demo_.
- *
- * DSP1 emulator code (c) Copyright 1998 Ivar, _Demo_ and Gary Henderson.
- * C4 asm and some C emulation code (c) Copyright 2000 zsKnight and _Demo_.
- * C4 C code (c) Copyright 2001 Gary Henderson (gary.henderson@ntlworld.com).
- *
- * DOS port code contains the works of other authors. See headers in
- * individual files.
- *
- * Snes9x homepage: http://www.snes9x.com
- *
- * Permission to use, copy, modify and distribute Snes9x in both binary and
- * source form, for non-commercial purposes, is hereby granted without fee,
- * providing that this license information and copyright notice appear with
- * all copies and any derived work.
- *
- * This software is provided 'as-is', without any express or implied
- * warranty. In no event shall the authors be held liable for any damages
- * arising from the use of this software.
- *
- * Snes9x is freeware for PERSONAL USE only. Commercial users should
- * seek permission of the copyright holders first. Commercial use includes
- * charging money for Snes9x or software derived from Snes9x.
- *
- * The copyright holders request that bug fixes and improvements to the code
- * should be forwarded to them so everyone can benefit from the modifications
- * in future versions.
- *
- * Super NES and Super Nintendo Entertainment System are trademarks of
- * Nintendo Co., Limited and its subsidiary companies.
- */
-#include "snes9x.h"
+/*******************************************************************************
+  Snes9x - Portable Super Nintendo Entertainment System (TM) emulator.
+ 
+  (c) Copyright 1996 - 2002 Gary Henderson (gary.henderson@ntlworld.com) and
+                            Jerremy Koot (jkoot@snes9x.com)
+
+  (c) Copyright 2001 - 2004 John Weidman (jweidman@slip.net)
+
+  (c) Copyright 2002 - 2004 Brad Jorsch (anomie@users.sourceforge.net),
+                            funkyass (funkyass@spam.shaw.ca),
+                            Joel Yliluoma (http://iki.fi/bisqwit/)
+                            Kris Bleakley (codeviolation@hotmail.com),
+                            Matthew Kendora,
+                            Nach (n-a-c-h@users.sourceforge.net),
+                            Peter Bortas (peter@bortas.org) and
+                            zones (kasumitokoduck@yahoo.com)
+
+  C4 x86 assembler and some C emulation code
+  (c) Copyright 2000 - 2003 zsKnight (zsknight@zsnes.com),
+                            _Demo_ (_demo_@zsnes.com), and Nach
+
+  C4 C++ code
+  (c) Copyright 2003 Brad Jorsch
+
+  DSP-1 emulator code
+  (c) Copyright 1998 - 2004 Ivar (ivar@snes9x.com), _Demo_, Gary Henderson,
+                            John Weidman, neviksti (neviksti@hotmail.com),
+                            Kris Bleakley, Andreas Naive
+
+  DSP-2 emulator code
+  (c) Copyright 2003 Kris Bleakley, John Weidman, neviksti, Matthew Kendora, and
+                     Lord Nightmare (lord_nightmare@users.sourceforge.net
+
+  OBC1 emulator code
+  (c) Copyright 2001 - 2004 zsKnight, pagefault (pagefault@zsnes.com) and
+                            Kris Bleakley
+  Ported from x86 assembler to C by sanmaiwashi
+
+  SPC7110 and RTC C++ emulator code
+  (c) Copyright 2002 Matthew Kendora with research by
+                     zsKnight, John Weidman, and Dark Force
+
+  S-DD1 C emulator code
+  (c) Copyright 2003 Brad Jorsch with research by
+                     Andreas Naive and John Weidman
+ 
+  S-RTC C emulator code
+  (c) Copyright 2001 John Weidman
+  
+  ST010 C++ emulator code
+  (c) Copyright 2003 Feather, Kris Bleakley, John Weidman and Matthew Kendora
+
+  Super FX x86 assembler emulator code 
+  (c) Copyright 1998 - 2003 zsKnight, _Demo_, and pagefault 
+
+  Super FX C emulator code 
+  (c) Copyright 1997 - 1999 Ivar, Gary Henderson and John Weidman
+
+
+  SH assembler code partly based on x86 assembler code
+  (c) Copyright 2002 - 2004 Marcus Comstedt (marcus@mc.pp.se) 
+
+ 
+  Specific ports contains the works of other authors. See headers in
+  individual files.
+ 
+  Snes9x homepage: http://www.snes9x.com
+ 
+  Permission to use, copy, modify and distribute Snes9x in both binary and
+  source form, for non-commercial purposes, is hereby granted without fee,
+  providing that this license information and copyright notice appear with
+  all copies and any derived work.
+ 
+  This software is provided 'as-is', without any express or implied
+  warranty. In no event shall the authors be held liable for any damages
+  arising from the use of this software.
+ 
+  Snes9x is freeware for PERSONAL USE only. Commercial users should
+  seek permission of the copyright holders first. Commercial use includes
+  charging money for Snes9x or software derived from Snes9x.
+ 
+  The copyright holders request that bug fixes and improvements to the code
+  should be forwarded to them so everyone can benefit from the modifications
+  in future versions.
+ 
+  Super NES and Super Nintendo Entertainment System are trademarks of
+  Nintendo Co., Limited and its subsidiary companies.
+*******************************************************************************/
+
+#ifndef _GETSET_H_
+#define _GETSET_H_
+
 #include "ppu.h"
+#include "dsp1.h"
 #include "cpuexec.h"
-
 #include "sa1.h"
+#include "c4.h"
+#include "bsx.h"
+#include "spc7110.h"
+#include "hwregisters.h"
+#include "obc1.h"
 
-static void S9xSA1CharConv2 ();
-static void S9xSA1DMA ();
-static void S9xSA1ReadVariableLengthData (bool8 inc, bool8 no_shift);
+// Forward declarations to break the circular include dependency:
+// getset.h -> cpuexec.h -> memmap.h -> getset.h (guard fires).
+// When getset.h is reached via that path, cpuexec.h's include guard has
+// already fired and S9xSetIRQ / S9xClearIRQ are not yet visible, causing
+// compile errors in the SA1 register handlers inlined below.
+// Declaring them here makes them available regardless of include order.
+void S9xSetIRQ (uint32 source);
+void S9xClearIRQ (uint32 source);
 
-void S9xSA1Init ()
+INLINE uint8 S9xGetByte (uint32 Address)
 {
-    SA1.NMIActive = FALSE;
-    SA1.IRQActive = FALSE;
-    SA1.WaitingForInterrupt = FALSE;
-    SA1.Waiting = FALSE;
-    SA1.Flags = 0;
-    SA1.Executing = FALSE;
-    memset (&ROM_GLOBAL [0x2200], 0, 0x200);
-    ROM_GLOBAL [0x2200] = 0x20;
-    ROM_GLOBAL [0x2220] = 0x00;
-    ROM_GLOBAL [0x2221] = 0x01;
-    ROM_GLOBAL [0x2222] = 0x02;
-    ROM_GLOBAL [0x2223] = 0x03;
-    ROM_GLOBAL [0x2228] = 0xff;
-    SA1.op1 = 0;
-    SA1.op2 = 0;
-    SA1.arithmetic_op = 0;
-    SA1.sum = 0;
-    SA1.overflow = FALSE;
-}
+	int block;
+    uint8 *GetAddress = CPU.MemoryMap [block = (Address >> MEMMAP_SHIFT) & MEMMAP_MASK];
+#ifdef VAR_CYCLES
+	if ((intptr_t) GetAddress != Memory.MAP_CPU || !CPU.InDMA)
+        CPU.Cycles += CPU.MemorySpeed [block];
+#endif
 
-void S9xSA1Reset ()
-{
-    SA1Registers.PB = 0;
-    SA1Registers.PCw = ROM_GLOBAL [0x2203] |
-		      (ROM_GLOBAL [0x2204] << 8);
-    SA1Registers.D.W = 0;
-    SA1Registers.DB = 0;
-    SA1Registers.SH = 1;
-    SA1Registers.SL = 0xFF;
-    SA1Registers.XH = 0;
-    SA1Registers.YH = 0;
-    SA1Registers.P.W = 0;
-
-    SA1.ShiftedPB = 0;
-    SA1.ShiftedDB = 0;
-    SA1SetFlags (MemoryFlag | IndexFlag | IRQ | Emulation);
-    SA1ClearFlags (Decimal);
-
-    SA1.WaitingForInterrupt = FALSE;
-    SA1.PC = NULL;
-    SA1.PCBase = NULL;
-    S9xSA1SetPCBase (SA1Registers.PCw);
-    SA1.S9xOpcodes = S9xSA1OpcodesM1X1;
-
-    S9xSA1UnpackStatus();
-    S9xSA1FixCycles ();
-	SA1.WaitCounter = 3;
-    SA1.Executing = TRUE;
-    SA1.BWRAM = SRAM;
-    ROM_GLOBAL [0x2225] = 0;
-}
-
-void S9xSA1SetBWRAMMemMap (uint8 val)
-{
-    int c;
-
-    if (val & 0x80)
-    {
-	for (c = 0; c < 0x400; c += 16)
-	{
-	    SA1.Map [c + 6] = SA1.Map [c + 0x806] = (uint8 *) CMemory::MAP_BWRAM_BITMAP2;
-	    SA1.Map [c + 7] = SA1.Map [c + 0x807] = (uint8 *) CMemory::MAP_BWRAM_BITMAP2;
-	    SA1.WriteMap [c + 6] = SA1.WriteMap [c + 0x806] = (uint8 *) CMemory::MAP_BWRAM_BITMAP2;
-	    SA1.WriteMap [c + 7] = SA1.WriteMap [c + 0x807] = (uint8 *) CMemory::MAP_BWRAM_BITMAP2;
-	}
-	SA1.BWRAM = SRAM + (val & 0x7f) * 0x2000 / 4;
-    }
-    else
-    {
-	for (c = 0; c < 0x400; c += 16)
-	{
-	    SA1.Map [c + 6] = SA1.Map [c + 0x806] = (uint8 *) CMemory::MAP_BWRAM;
-	    SA1.Map [c + 7] = SA1.Map [c + 0x807] = (uint8 *) CMemory::MAP_BWRAM;
-	    SA1.WriteMap [c + 6] = SA1.WriteMap [c + 0x806] = (uint8 *) CMemory::MAP_BWRAM;
-	    SA1.WriteMap [c + 7] = SA1.WriteMap [c + 0x807] = (uint8 *) CMemory::MAP_BWRAM;
-	}
-	SA1.BWRAM = SRAM + (val & 7) * 0x2000;
-    }
-}
-
-void S9xFixSA1AfterSnapshotLoad ()
-{
-    SA1.ShiftedPB = (uint32) SA1Registers.PB << 16;
-    SA1.ShiftedDB = (uint32) SA1Registers.DB << 16;
-
-    S9xSA1SetPCBase (SA1.ShiftedPB + SA1Registers.PCw);
-    S9xSA1UnpackStatus ();
-    S9xSA1FixCycles ();
-    SA1.VirtualBitmapFormat = (ROM_GLOBAL [0x223f] & 0x80) ? 2 : 4;
-    BWRAM = SRAM + (ROM_GLOBAL [0x2224] & 7) * 0x2000;
-    S9xSA1SetBWRAMMemMap (ROM_GLOBAL [0x2225]);
-
-    SA1.Waiting = (ROM_GLOBAL [0x2200] & 0x60) != 0;
-    SA1.Executing = !SA1.Waiting;
-}
-
-uint8 S9xSA1GetByte (uint32 address)
-{
-    uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-    // Hot path: direct memory via map pointer. The long switch below is
-    // for the register / BWRAM-bitmap dispatches and is hit far less often.
+    // Hot path: direct memory (ROM/RAM/SRAM/etc.) via pointer.
+    // Slow path: hardware register dispatch. Registers are touched rarely
+    // compared to code fetches and data loads, so mark the fast side LIKELY
+    // to give the compiler a correct code-layout hint.
     if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
-	return (*(GetAddress + (address & 0xffff)));
+		return (*(GetAddress + (Address & 0xffff)));
+	else 
+		return S9xGetByteFromRegister(GetAddress, Address);
+}
+
+INLINE uint16 S9xGetWord (uint32 Address)
+{
+    if (LIKELY((Address & 0x0fff) != 0x0fff))
+	{
+   		int block;
+   		uint8 *GetAddress = CPU.MemoryMap [block = (Address >> MEMMAP_SHIFT) & MEMMAP_MASK];
+				
+#ifdef VAR_CYCLES
+		if ((intptr_t) GetAddress != Memory.MAP_CPU || !CPU.InDMA)
+  	  	    CPU.Cycles += CPU.MemorySpeed [block] << 1;
+#endif
+
+		// Hot path: contiguous word read via direct pointer.
+		// Slow path: register dispatch. See S9xGetByte for the rationale.
+		if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
+		{
+#ifdef CPU_SHUTDOWN
+			if (Memory.BlockIsRAM [block])
+				CPU.WaitAddress = CPU.PCAtOpcodeStart;
+#endif
+#ifdef FAST_LSB_WORD_ACCESS
+			return (*(uint16 *) (GetAddress + (Address & 0xffff)));
+#else
+			return (*(GetAddress + (Address & 0xffff)) | (*(GetAddress + (Address & 0xffff) + 1) << 8));
+#endif	
+   		}
+		return S9xGetWordFromRegister(GetAddress, Address);
+	}
+	else
+ 		return (S9xGetByte (Address) | (S9xGetByte (Address + 1) << 8));
+}
+
+INLINE void S9xSetByte (uint8 Byte, uint32 Address)
+{
+#if defined(CPU_SHUTDOWN)
+    CPU.WaitAddress = NULL;
+#endif
+    int block;
+    uint8 *SetAddress = CPU.MemoryWriteMap [block = ((Address >> MEMMAP_SHIFT) & MEMMAP_MASK)];
+	
+#ifdef VAR_CYCLES
+	if ((intptr_t) SetAddress != Memory.MAP_CPU || !CPU.InDMA)
+		CPU.Cycles += CPU.MemorySpeed [block];
+#endif
+	
+    if (LIKELY(SetAddress >= (uint8 *) CMemory::MAP_LAST))
+    {
+		*(SetAddress + (Address & 0xffff)) = Byte;
+#ifdef CPU_SHUTDOWN
+		// Gate the SA1 wake-up detection on WaitByteAddress1 being set.
+		// For non-SA1 games these pointers are NULL, so the whole block
+		// collapses to a single predicted-not-taken branch. For SA1 games
+		// the vast majority of writes also miss this path, so the branch
+		// is kept cold. The computed address is cached in a local to avoid
+		// recomputing (SetAddress + (Address & 0xffff)) twice.
+		if (UNLIKELY(SA1.WaitByteAddress1 != NULL))
+		{
+			uint8 *writeAddr = SetAddress + (Address & 0xffff);
+			if (writeAddr == SA1.WaitByteAddress1 ||
+				writeAddr == SA1.WaitByteAddress2)
+			{
+				if (!SA1.Executing)
+					SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
+				if (SA1.Executing) SA1.WaitCounter = 3;
+			}
+		}
+#endif
+		return;
+    }
+	S9xSetByteToRegister(Byte, SetAddress, Address);
+}
+
+INLINE void S9xSetWord(uint16 Word, uint32 Address)
+{
+#ifdef VAR_CYCLES
+	if((Address & 0x0FFF)==0x0FFF)
+	{
+		S9xSetByte(Word&0x00FF, Address);
+		S9xSetByte(Word>>8, Address+1);
+		return;
+	}
+#endif
+	
+#if defined(CPU_SHUTDOWN)
+    CPU.WaitAddress = NULL;
+#endif
+
+    int block;
+    uint8 *SetAddress = CPU.MemoryWriteMap [block = ((Address >> MEMMAP_SHIFT) & MEMMAP_MASK)];
+	
+#ifdef VAR_CYCLES
+	if ((intptr_t) SetAddress != Memory.MAP_CPU || !CPU.InDMA)
+		CPU.Cycles += CPU.MemorySpeed [block] << 1;
+#endif
+
+	if (LIKELY(SetAddress >= (uint8 *) CMemory::MAP_LAST))
+	{
+#ifdef CPU_SHUTDOWN
+		// Same optimization as S9xSetByte: gate on WaitByteAddress1 being set
+		// (NULL for non-SA1 games and for SA1 games without a registered
+		// wake-up address), and compute the write address once into a local.
+		if (UNLIKELY(SA1.WaitByteAddress1 != NULL))
+		{
+			uint8 *writeAddr = SetAddress + (Address & 0xffff);
+			if (writeAddr == SA1.WaitByteAddress1 ||
+				writeAddr == SA1.WaitByteAddress2)
+			{
+				if (!SA1.Executing)
+					SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes != NULL;
+				if (SA1.Executing) SA1.WaitCounter = 3;
+			}
+		}
+#ifdef FAST_LSB_WORD_ACCESS
+	*(uint16 *) (SetAddress + (Address & 0xffff)) = Word;
+#else
+	*(SetAddress + (Address & 0xffff))       = (uint8) Word;
+	*(SetAddress + ((Address + 1) & 0xffff)) = (uint8) (Word >> 8);
+#endif
+#else
+#ifdef FAST_LSB_WORD_ACCESS
+	*(uint16 *) (SetAddress + (Address & 0xffff)) = Word;
+#else
+	*(SetAddress + (Address & 0xffff)) = (uint8) Word;
+	*(SetAddress + ((Address + 1) & 0xffff)) = Word >> 8;
+#endif
+#endif
+	return;
+    }		
+	S9xSetWordToRegister(Word, SetAddress, Address);
+}
+
+INLINE uint8 *GetBasePointer (uint32 Address)
+{
+    uint8 *GetAddress = Map [(Address >> MEMMAP_SHIFT) & MEMMAP_MASK];
+    if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+	return (GetAddress);
 
     switch ((int) GetAddress)
     {
+	case CMemory::MAP_SPC7110_ROM:
+		return (S9xGetBasePointerSPC7110(Address));
     case CMemory::MAP_PPU:
-	return (S9xGetSA1 (address & 0xffff));
-    case CMemory::MAP_LOROM_SRAM:
+		return (ROM_GLOBAL);
+    case CMemory::MAP_CPU:
+		return (ROM_GLOBAL);
+    case CMemory::MAP_DSP:
+		return (ROM_GLOBAL - 0x6000);
     case CMemory::MAP_SA1RAM:
-	return (*(SRAM + (address & 0xffff)));
+    case CMemory::MAP_LOROM_SRAM:
+        return (SRAM);
     case CMemory::MAP_BWRAM:
-	return (*(SA1.BWRAM + ((address & 0x7fff) - 0x6000)));
-    case CMemory::MAP_BWRAM_BITMAP:
-	address -= 0x600000;
-	if (SA1.VirtualBitmapFormat == 2)
-	    return ((SRAM [(address >> 2) & 0xffff] >> ((address & 3) << 1)) & 3);
-	else
-	    return ((SRAM [(address >> 1) & 0xffff] >> ((address & 1) << 2)) & 15);
-    case CMemory::MAP_BWRAM_BITMAP2:
-	address = (address & 0xffff) - 0x6000;
-	if (SA1.VirtualBitmapFormat == 2)
-	    return ((SA1.BWRAM [(address >> 2) & 0xffff] >> ((address & 3) << 1)) & 3);
-	else
-	    return ((SA1.BWRAM [(address >> 1) & 0xffff] >> ((address & 1) << 2)) & 15);
-
+	return (BWRAM - 0x6000);
+    case CMemory::MAP_HIROM_SRAM:
+        return (SRAM - 0x6000);
+    case CMemory::MAP_C4:
+		return (S9xGetBasePointerC4(Address & 0xffff));
     case CMemory::MAP_DEBUG:
-    default:
 #ifdef DEBUGGER
-//	printf ("R(B) %06x\n", address);
+	printf ("GBP %06x\n", Address);
 #endif
 
+    default:
+    case CMemory::MAP_NONE:
+#ifdef DEBUGGER
+	printf ("GBP %06x\n", Address);
+#endif
 	return (0);
     }
 }
 
-uint8 S9xSA1GetByteSlow (uint32 address, int GetAddress)
+INLINE uint8 *S9xGetMemPointer (uint32 Address)
 {
-    switch ((int) GetAddress)
-    {
-    case CMemory::MAP_PPU:
-	return (S9xGetSA1 (address & 0xffff));
-    case CMemory::MAP_LOROM_SRAM:
-    case CMemory::MAP_SA1RAM:
-	return (*(SRAM + (address & 0xffff)));
-    case CMemory::MAP_BWRAM:
-	return (*(SA1.BWRAM + ((address & 0x7fff) - 0x6000)));
-    case CMemory::MAP_BWRAM_BITMAP:
-	address -= 0x600000;
-	if (SA1.VirtualBitmapFormat == 2)
-	    return ((SRAM [(address >> 2) & 0xffff] >> ((address & 3) << 1)) & 3);
-	else
-	    return ((SRAM [(address >> 1) & 0xffff] >> ((address & 1) << 2)) & 15);
-    case CMemory::MAP_BWRAM_BITMAP2:
-	address = (address & 0xffff) - 0x6000;
-	if (SA1.VirtualBitmapFormat == 2)
-	    return ((SA1.BWRAM [(address >> 2) & 0xffff] >> ((address & 3) << 1)) & 3);
-	else
-	    return ((SA1.BWRAM [(address >> 1) & 0xffff] >> ((address & 1) << 2)) & 15);
-
-    case CMemory::MAP_DEBUG:
-    default:
-#ifdef DEBUGGER
-//	printf ("R(B) %06x\n", address);
-#endif
-        return (0);
-    }
-}
-
-uint16 S9xSA1GetWord (uint32 address)
-{
-    // Fast path: both bytes are in the same 64KB block. This is true for
-    // virtually every word read except those that land exactly on a bank
-    // boundary (address & 0xffff == 0xffff). Guard that case explicitly
-    // and fall through to two S9xSA1GetByte calls so the map is consulted
-    // separately for each byte — important when the two halves of the word
-    // map to different regions.
-    if (LIKELY((address & 0xffff) != 0xffff))
-    {
-        uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-        if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
-            return (*(GetAddress + (address & 0xffff))) |
-                   (*(GetAddress + (address & 0xffff) + 1) << 8);
-    }
-    return (S9xSA1GetByte (address) | (S9xSA1GetByte (address + 1) << 8));
-}
-
-void S9xSA1SetByte (uint8 byte, uint32 address)
-{
-    uint8 *Setaddress = SA1.WriteMap [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-
-    // Hot path: direct memory write. Register and bitmap dispatches follow.
-    if (LIKELY(Setaddress >= (uint8 *) CMemory::MAP_LAST))
-    {
-	*(Setaddress + (address & 0xffff)) = byte;
-	return;
-    }
-
-    switch ((int) Setaddress)
-    {
-    case CMemory::MAP_PPU:
-	S9xSetSA1 (byte, address & 0xffff);
-	return;
-    case CMemory::MAP_SA1RAM:
-    case CMemory::MAP_LOROM_SRAM:
-	*(SRAM + (address & 0xffff)) = byte;
-	return;
-    case CMemory::MAP_BWRAM:
-	*(SA1.BWRAM + ((address & 0x7fff) - 0x6000)) = byte;
-	return;
-    case CMemory::MAP_BWRAM_BITMAP:
-	address -= 0x600000;
-	if (SA1.VirtualBitmapFormat == 2)
-	{
-	    uint8 *ptr = &SRAM [(address >> 2) & 0xffff];
-	    *ptr &= ~(3 << ((address & 3) << 1));
-	    *ptr |= (byte & 3) << ((address & 3) << 1);
-	}
-	else
-	{
-	    uint8 *ptr = &SRAM [(address >> 1) & 0xffff];
-	    *ptr &= ~(15 << ((address & 1) << 2));
-	    *ptr |= (byte & 15) << ((address & 1) << 2);
-	}
-	break;
-    case CMemory::MAP_BWRAM_BITMAP2:
-	address = (address & 0xffff) - 0x6000;
-	if (SA1.VirtualBitmapFormat == 2)
-	{
-	    uint8 *ptr = &SA1.BWRAM [(address >> 2) & 0xffff];
-	    *ptr &= ~(3 << ((address & 3) << 1));
-	    *ptr |= (byte & 3) << ((address & 3) << 1);
-	}
-	else
-	{
-	    uint8 *ptr = &SA1.BWRAM [(address >> 1) & 0xffff];
-	    *ptr &= ~(15 << ((address & 1) << 2));
-	    *ptr |= (byte & 15) << ((address & 1) << 2);
-	}
-    default:
-	return;
-    }
-}
-
-void S9xSA1SetByteSlow (uint8 byte, uint32 address, int Setaddress)
-{
-    switch ((int) Setaddress)
-    {
-    case CMemory::MAP_PPU:
-	S9xSetSA1 (byte, address & 0xffff);
-	return;
-    case CMemory::MAP_SA1RAM:
-    case CMemory::MAP_LOROM_SRAM:
-	*(SRAM + (address & 0xffff)) = byte;
-	return;
-    case CMemory::MAP_BWRAM:
-	*(SA1.BWRAM + ((address & 0x7fff) - 0x6000)) = byte;
-	return;
-    case CMemory::MAP_BWRAM_BITMAP:
-	address -= 0x600000;
-	if (SA1.VirtualBitmapFormat == 2)
-	{
-	    uint8 *ptr = &SRAM [(address >> 2) & 0xffff];
-	    *ptr &= ~(3 << ((address & 3) << 1));
-	    *ptr |= (byte & 3) << ((address & 3) << 1);
-	}
-	else
-	{
-	    uint8 *ptr = &SRAM [(address >> 1) & 0xffff];
-	    *ptr &= ~(15 << ((address & 1) << 2));
-	    *ptr |= (byte & 15) << ((address & 1) << 2);
-	}
-	break;
-    case CMemory::MAP_BWRAM_BITMAP2:
-	address = (address & 0xffff) - 0x6000;
-	if (SA1.VirtualBitmapFormat == 2)
-	{
-	    uint8 *ptr = &SA1.BWRAM [(address >> 2) & 0xffff];
-	    *ptr &= ~(3 << ((address & 3) << 1));
-	    *ptr |= (byte & 3) << ((address & 3) << 1);
-	}
-	else
-	{
-	    uint8 *ptr = &SA1.BWRAM [(address >> 1) & 0xffff];
-	    *ptr &= ~(15 << ((address & 1) << 2));
-	    *ptr |= (byte & 15) << ((address & 1) << 2);
-	}
-    default:
-	return;
-    }
-}
-
-void S9xSA1SetWord (uint16 Word, uint32 address)
-{
-    uint8 *Setaddress = SA1.WriteMap [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-
-    // Hot path: direct memory write. Cold path delegates to S9xSA1SetByte
-    // which handles register/bitmap regions.
-    if (LIKELY(Setaddress >= (uint8 *) CMemory::MAP_LAST))
-    {
-        *(Setaddress + (address & 0xffff))       = (uint8) Word;
-        *(Setaddress + ((address + 1) & 0xffff)) = (uint8) (Word >> 8);
-        return;
-    }
-    S9xSA1SetByte ((uint8) Word,        address);
-    S9xSA1SetByte ((uint8) (Word >> 8), address + 1);
-}
-
-void S9xSA1SetPCBase (uint32 address)
-{
-    uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-    // Hot path: PC lands in a ROM/RAM block, set base and address directly.
-    // The slow switch below only runs for the rare cases where SA1 branches
-    // into a PPU/CPU/DSP/BWRAM/SRAM region (which is legal but uncommon).
-    if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
-    {
-	SA1.PCBase = GetAddress;
-	SA1.PC = GetAddress + (address & 0xffff);
-	return;
-    }
+    uint8 *GetAddress = Map [(Address >> MEMMAP_SHIFT) & MEMMAP_MASK];
+    if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+	return (GetAddress + (Address & 0xffff));
 
     switch ((int) GetAddress)
     {
+	case CMemory::MAP_SPC7110_ROM:
+		return (S9xGetBasePointerSPC7110(Address) + (Address & 0xffff));
     case CMemory::MAP_PPU:
-	SA1.PCBase = ROM_GLOBAL - 0x2000;
-	SA1.PC = SA1.PCBase + (address & 0xffff);
-	return;
-	
+		return (ROM_GLOBAL + (Address & 0xffff));
     case CMemory::MAP_CPU:
-	SA1.PCBase = ROM_GLOBAL - 0x4000;
-	SA1.PC = SA1.PCBase + (address & 0xffff);
-	return;
-	
+		return (ROM_GLOBAL + (Address & 0xffff));
     case CMemory::MAP_DSP:
-	SA1.PCBase = ROM_GLOBAL - 0x6000;
-	SA1.PC = SA1.PCBase + (address & 0xffff);
-	return;
-	
+		return (ROM_GLOBAL - 0x6000 + (Address & 0xffff));
     case CMemory::MAP_SA1RAM:
     case CMemory::MAP_LOROM_SRAM:
-	SA1.PCBase = SRAM;
-	SA1.PC = SA1.PCBase + (address & 0xffff);
-	return;
-
+        return (SRAM + (Address & 0xffff));
     case CMemory::MAP_BWRAM:
-	SA1.PCBase = SA1.BWRAM - 0x6000;
-	SA1.PC = SA1.PCBase + (address & 0xffff);
-	return;
+		return (BWRAM - 0x6000 + (Address & 0xffff));
     case CMemory::MAP_HIROM_SRAM:
-	SA1.PCBase = SRAM - 0x6000;
-	SA1.PC = SA1.PCBase + (address & 0xffff);
-	return;
-
+        return (SRAM - 0x6000 + (Address & 0xffff));
+    case CMemory::MAP_C4:
+	return (S9xGetMemPointerC4(Address & 0xffff));
     case CMemory::MAP_DEBUG:
 #ifdef DEBUGGER
-	printf ("SBP %06x\n", address);
+	printf ("GMP %06x\n", Address);
 #endif
-	
     default:
     case CMemory::MAP_NONE:
-	SA1.PCBase = RAM;
-	SA1.PC = RAM + (address & 0xffff);
-	return;
-    }
-}
-
-/*void S9xSA1ExecuteDuringSleep ()
-{
-#if 0
-    if (SA1.Executing)
-    {
-	while (CPU.Cycles < CPU.NextEvent)
-	{
-	    S9xSA1MainLoop ();
-	    CPU.Cycles += TWO_CYCLES * 2;
-	}
-    }
-#endif
-}*/
-
-void S9xSetSA1MemMap (uint32 which1, uint8 map)
-{
-    int c;
-    int start = which1 * 0x100 + 0xc00;
-    int start2 = which1 * 0x200;
-
-    if (which1 >= 2)
-	start2 += 0x400;
-
-    for (c = 0; c < 0x100; c += 16)
-    {
-	uint8 *block = &Memory.ROM [(map & 7) * 0x100000 + (c << 12)];
-	int i;
-
-	for (i = c; i < c + 16; i++)
-	    Map [start + i] = SA1.Map [start + i] = block;
-    }
-    
-    for (c = 0; c < 0x200; c += 16)
-    {
-		// Code from Snes9x 1.54.1 and snes9x 3DS
-		// This allows Super Mario World VLDC 9 hack to work
-        // conversion to int is needed here - map is promoted but which1 is not
-        int32 offset = (((map & 0x80) ? map : which1) & 7) * 0x100000 + (c << 11) - 0x8000;
-		uint8 *block = &Memory.ROM[offset];
-		int i;
-
-		for (i = c + 8; i < c + 16; i++)
-			Map [start2 + i] = SA1.Map [start2 + i] = block;
-    }
-}
-
-uint8 S9xGetSA1 (uint32 address)
-{
-//	printf ("R: %04x\n", address);
-    switch (address)
-    {
-    case 0x2300:
-	return ((uint8) ((ROM_GLOBAL [0x2209] & 0x5f) | 
-		 (CPU.IRQActive & (SA1_IRQ_SOURCE | SA1_DMA_IRQ_SOURCE))));
-    case 0x2301:
-	return ((ROM_GLOBAL [0x2200] & 0xf) |
-		(ROM_GLOBAL [0x2301] & 0xf0));
-    case 0x2306:
-	return ((uint8)  SA1.sum);
-    case 0x2307:
-	return ((uint8) (SA1.sum >>  8));
-    case 0x2308:
-	return ((uint8) (SA1.sum >> 16));
-    case 0x2309:
-	return ((uint8) (SA1.sum >> 24));
-    case 0x230a:
-	return ((uint8) (SA1.sum >> 32));
-	case 0x230c:
-	return (ROM_GLOBAL [0x230c]);
-    case 0x230d:
-    {
-	uint8 byte = ROM_GLOBAL [0x230d];
-
-	if (ROM_GLOBAL [0x2258] & 0x80)
-	{
-	    S9xSA1ReadVariableLengthData (TRUE, FALSE);
-	}
-	return (byte);
-    }
-    default:	
-	break;
-    }
-    return (ROM_GLOBAL [address]);
-}
-
-void S9xSetSA1 (uint8 byte, uint32 address)
-{
-//printf ("W: %02x -> %04x\n", byte, address);
-    switch (address)
-    {
-    case 0x2200:
-	SA1.Waiting = (byte & 0x60) != 0;
-//	SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes;
-
-	if (!(byte & 0x20) && (ROM_GLOBAL [0x2200] & 0x20))
-	{
-	    S9xSA1Reset ();
-	}
-	if (byte & 0x80)
-	{
-	    ROM_GLOBAL [0x2301] |= 0x80;
-	    if (ROM_GLOBAL [0x220a] & 0x80)
-	    {
-		SA1.Flags |= IRQ_PENDING_FLAG;
-		SA1.IRQActive |= SNES_IRQ_SOURCE;
-		SA1.Executing = !SA1.Waiting && SA1.S9xOpcodes;
-		if (SA1.Executing) SA1.WaitCounter = 3;
-	    }
-	}
-	if (byte & 0x10)
-	{
-	    ROM_GLOBAL [0x2301] |= 0x10;
 #ifdef DEBUGGER
-		printf ("###SA1 NMI\n");
+	printf ("GMP %06x\n", Address);
 #endif
-	}
-	break;
-
-    case 0x2201:
-	if (((byte ^ ROM_GLOBAL [0x2201]) & 0x80) &&
-	    (ROM_GLOBAL [0x2300] & byte & 0x80))
-	{
-	    S9xSetIRQ (SA1_IRQ_SOURCE);
-	}
-	if (((byte ^ ROM_GLOBAL [0x2201]) & 0x20) &&
-	    (ROM_GLOBAL [0x2300] & byte & 0x20))
-	{
-	    S9xSetIRQ (SA1_DMA_IRQ_SOURCE);
-	}
-	break;
-    case 0x2202:
-	if (byte & 0x80)
-	{
-	    ROM_GLOBAL [0x2300] &= ~0x80;
-	    S9xClearIRQ (SA1_IRQ_SOURCE);
-	}
-	if (byte & 0x20)
-	{
-	    ROM_GLOBAL [0x2300] &= ~0x20;
-	    S9xClearIRQ (SA1_DMA_IRQ_SOURCE);
-	}
-	break;
-    case 0x2203:
-//	printf ("SA1 reset vector: %04x\n", byte | (ROM_GLOBAL [0x2204] << 8));
-	break;
-    case 0x2204:
-//	printf ("SA1 reset vector: %04x\n", (byte << 8) | ROM_GLOBAL [0x2203]);
-	break;
-
-    case 0x2205:
-//	printf ("SA1 NMI vector: %04x\n", byte | (ROM_GLOBAL [0x2206] << 8));
-	break;
-    case 0x2206:
-//	printf ("SA1 NMI vector: %04x\n", (byte << 8) | ROM_GLOBAL [0x2205]);
-	break;
-
-    case 0x2207:
-//	printf ("SA1 IRQ vector: %04x\n", byte | (ROM_GLOBAL [0x2208] << 8));
-	break;
-    case 0x2208:
-//	printf ("SA1 IRQ vector: %04x\n", (byte << 8) | ROM_GLOBAL [0x2207]);
-	break;
-
-    case 0x2209:
-	ROM_GLOBAL [0x2209] = byte;
-	if (byte & 0x80)
-	    ROM_GLOBAL [0x2300] |= 0x80;
-
-	if (byte & ROM_GLOBAL [0x2201] & 0x80)
-	{
-	    S9xSetIRQ (SA1_IRQ_SOURCE);
-	}
-	break;
-    case 0x220a:
-	if (((byte ^ ROM_GLOBAL [0x220a]) & 0x80) &&
-	    (ROM_GLOBAL [0x2301] & byte & 0x80))
-	{
-	    SA1.Flags |= IRQ_PENDING_FLAG;
-	    SA1.IRQActive |= SNES_IRQ_SOURCE;
-		SA1.Executing = !SA1.Waiting;
-		if (SA1.Executing) SA1.WaitCounter = 3;
-	}
-	if (((byte ^ ROM_GLOBAL [0x220a]) & 0x40) &&
-	    (ROM_GLOBAL [0x2301] & byte & 0x40))
-	{
-	    SA1.Flags |= IRQ_PENDING_FLAG;
-	    SA1.IRQActive |= TIMER_IRQ_SOURCE;
-		SA1.Executing = !SA1.Waiting;
-		if (SA1.Executing) SA1.WaitCounter = 3;
-	}
-	if (((byte ^ ROM_GLOBAL [0x220a]) & 0x20) &&
-	    (ROM_GLOBAL [0x2301] & byte & 0x20))
-	{
-	    SA1.Flags |= IRQ_PENDING_FLAG;
-	    SA1.IRQActive |= DMA_IRQ_SOURCE;
-	    SA1.Executing = !SA1.Waiting;
-		if (SA1.Executing) SA1.WaitCounter = 3;
-	}
-	if (((byte ^ ROM_GLOBAL [0x220a]) & 0x10) &&
-	    (ROM_GLOBAL [0x2301] & byte & 0x10))
-	{
-#ifdef DEBUGGER
-	    printf ("###SA1 NMI\n");
-#endif
-	}
-	break;
-    case 0x220b:
-	if (byte & 0x80)
-	{
-	    SA1.IRQActive &= ~SNES_IRQ_SOURCE;
-	    ROM_GLOBAL [0x2301] &= ~0x80;
-	}
-	if (byte & 0x40)
-	{
-	    SA1.IRQActive &= ~TIMER_IRQ_SOURCE;
-	    ROM_GLOBAL [0x2301] &= ~0x40;
-	}
-	if (byte & 0x20)
-	{
-	    SA1.IRQActive &= ~DMA_IRQ_SOURCE;
-	    ROM_GLOBAL [0x2301] &= ~0x20;
-	}
-	if (byte & 0x10)
-	{
-	    // Clear NMI
-	    ROM_GLOBAL [0x2301] &= ~0x10;
-	}
-	if (!SA1.IRQActive)
-	    SA1.Flags &= ~IRQ_PENDING_FLAG;
-	break;
-    case 0x220c:
-//	printf ("SNES NMI vector: %04x\n", byte | (ROM_GLOBAL [0x220d] << 8));
-	break;
-    case 0x220d:
-//	printf ("SNES NMI vector: %04x\n", (byte << 8) | ROM_GLOBAL [0x220c]);
-	break;
-
-    case 0x220e:
-//	printf ("SNES IRQ vector: %04x\n", byte | (ROM_GLOBAL [0x220f] << 8));
-	break;
-    case 0x220f:
-//	printf ("SNES IRQ vector: %04x\n", (byte << 8) | ROM_GLOBAL [0x220e]);
-	break;
-
-    case 0x2210:
-#if 0
-	printf ("Timer %s\n", (byte & 0x80) ? "linear" : "HV");
-	printf ("Timer H-IRQ %s\n", (byte & 1) ? "enabled" : "disabled");
-	printf ("Timer V-IRQ %s\n", (byte & 2) ? "enabled" : "disabled");
-#endif
-	break;
-    case 0x2211:
-//	printf ("Timer reset\n");
-	break;
-    case 0x2212:
-#ifndef __GP32__        
-//	printf ("H-Timer %04x\n", byte | (ROM_GLOBAL [0x2213] << 8));
-#endif	
-	break;
-    case 0x2213:
-#ifndef __GP32__            
-//	printf ("H-Timer %04x\n", (byte << 8) | ROM_GLOBAL [0x2212]);
-#endif		
-	break;
-    case 0x2214:
-#ifndef __GP32__            
-//	printf ("V-Timer %04x\n", byte | (ROM_GLOBAL [0x2215] << 8));
-#endif		
-	break;
-    case 0x2215:
-#ifndef __GP32__            
-//	printf ("V-Timer %04x\n", (byte << 8) | ROM_GLOBAL [0x2214]);
-#endif		
-	break;
-    case 0x2220:
-    case 0x2221:
-    case 0x2222:
-    case 0x2223:
-	S9xSetSA1MemMap (address - 0x2220, byte);
-//	printf ("MMC: %02x\n", byte);
-	break;
-    case 0x2224:
-//	printf ("BWRAM image SNES %02x -> 0x6000\n", byte);
-	BWRAM = SRAM + (byte & 7) * 0x2000;
-	break;
-    case 0x2225:
-//	printf ("BWRAM image SA1 %02x -> 0x6000 (%02x)\n", byte, ROM_GLOBAL [address]);
-	if (byte != ROM_GLOBAL [address])
-	    S9xSA1SetBWRAMMemMap (byte);
-	break;
-    case 0x2226:
-//	printf ("BW-RAM SNES write %s\n", (byte & 0x80) ? "enabled" : "disabled");
-	break;
-    case 0x2227:
-//	printf ("BW-RAM SA1 write %s\n", (byte & 0x80) ? "enabled" : "disabled");
-	break;
-
-    case 0x2228:
-//	printf ("BW-RAM write protect area %02x\n", byte);
-	break;
-    case 0x2229:
-//	printf ("I-RAM SNES write protect area %02x\n", byte);
-	break;
-    case 0x222a:
-//	printf ("I-RAM SA1 write protect area %02x\n", byte);
-	break;
-    case 0x2230:
-#if 0
-	printf ("SA1 DMA %s\n", (byte & 0x80) ? "enabled" : "disabled");
-	printf ("DMA priority %s\n", (byte & 0x40) ? "DMA" : "SA1");
-	printf ("DMA %s\n", (byte & 0x20) ? "char conv" : "normal");
-	printf ("DMA type %s\n", (byte & 0x10) ? "BW-RAM -> I-RAM" : "SA1 -> I-RAM");
-	printf ("DMA distination %s\n", (byte & 4) ? "BW-RAM" : "I-RAM");
-	printf ("DMA source %s\n", DMAsource [byte & 3]);
-#endif
-	break;
-    case 0x2231:
-	if (byte & 0x80)
-	    SA1.in_char_dma = FALSE;
-#if 0
-	printf ("CHDEND %s\n", (byte & 0x80) ? "complete" : "incomplete");
-	printf ("DMA colour mode %d\n", byte & 3);
-	printf ("virtual VRAM width %d\n", (byte >> 2) & 7);
-#endif
-	break;
-    case 0x2232:
-    case 0x2233:
-    case 0x2234:
-	ROM_GLOBAL [address] = byte;
-#if 0
-	printf ("DMA source start %06x\n", 
-		ROM_GLOBAL [0x2232] | (ROM_GLOBAL [0x2233] << 8) |
-		(ROM_GLOBAL [0x2234] << 16));
-#endif
-	break;
-    case 0x2235:
-	ROM_GLOBAL [address] = byte;
-	break;
-    case 0x2236:
-	ROM_GLOBAL [address] = byte;
-	if ((ROM_GLOBAL [0x2230] & 0xa4) == 0x80)
-	{
-	    // Normal DMA to I-RAM
-	    S9xSA1DMA ();
-	}
-	else
-	if ((ROM_GLOBAL [0x2230] & 0xb0) == 0xb0)
-	{
-	    ROM_GLOBAL [0x2300] |= 0x20;
-	    if (ROM_GLOBAL [0x2201] & 0x20)
-		S9xSetIRQ (SA1_DMA_IRQ_SOURCE);
-	    SA1.in_char_dma = TRUE;
-	}
-	break;
-    case 0x2237:
-	ROM_GLOBAL [address] = byte;
-	if ((ROM_GLOBAL [0x2230] & 0xa4) == 0x84)
-	{
-	    // Normal DMA to BW-RAM
-	    S9xSA1DMA ();
-	}
-#if 0
-	printf ("DMA dest address %06x\n", 
-		ROM_GLOBAL [0x2235] | (ROM_GLOBAL [0x2236] << 8) |
-		(ROM_GLOBAL [0x2237] << 16));
-#endif
-	break;
-    case 0x2238:
-    case 0x2239:
-	ROM_GLOBAL [address] = byte;
-#if 0
-	printf ("DMA length %04x\n", 
-		ROM_GLOBAL [0x2238] | (ROM_GLOBAL [0x2239] << 8));
-#endif
-	break;
-    case 0x223f:
-	SA1.VirtualBitmapFormat = (byte & 0x80) ? 2 : 4;
-	//printf ("virtual VRAM depth %d\n", (byte & 0x80) ? 2 : 4);
-	break;
-
-    case 0x2240:    case 0x2241:    case 0x2242:    case 0x2243:
-    case 0x2244:    case 0x2245:    case 0x2246:    case 0x2247:
-    case 0x2248:    case 0x2249:    case 0x224a:    case 0x224b:
-    case 0x224c:    case 0x224d:    case 0x224e:
-#if 0
-	if (!(SA1.Flags & TRACE_FLAG))
-	{
-	    TraceSA1 ();
-	    Trace ();
-	}
-#endif
-	ROM_GLOBAL [address] = byte;
-	break;
-
-    case 0x224f:
-	ROM_GLOBAL [address] = byte;
-	if ((ROM_GLOBAL [0x2230] & 0xb0) == 0xa0)
-	{
-	    // Char conversion 2 DMA enabled
-	    memmove (&Memory.ROM [/*CMemory::*/Memory.MAX_ROM_SIZE - 0x10000] + SA1.in_char_dma * 16,
-		     &ROM_GLOBAL [0x2240], 16);
-	    SA1.in_char_dma = (SA1.in_char_dma + 1) & 7;
-	    if ((SA1.in_char_dma & 3) == 0)
-	    {
-		S9xSA1CharConv2 ();
-	    }
-	}
-	break;
-    case 0x2250:
-	if (byte & 2)
-	    SA1.sum = 0;
-	SA1.arithmetic_op = byte & 3;
-	break;
-    
-    case 0x2251:
-	SA1.op1 = (SA1.op1 & 0xff00) | byte;
-	break;
-    case 0x2252:
-	SA1.op1 = (SA1.op1 & 0xff) | (byte << 8);
-	break;
-    case 0x2253:
-	SA1.op2 = (SA1.op2 & 0xff00) | byte;
-	break;
-    case 0x2254:
-	SA1.op2 = (SA1.op2 & 0xff) | (byte << 8);
-	switch (SA1.arithmetic_op)
-	{
-        case 0:	// multiply
-	    SA1.sum = SA1.op1 * SA1.op2;
-	    break;
-	case 1: // divide
-	    if (SA1.op2 == 0)
-		SA1.sum = SA1.op1 << 16;
-	    else
-	    {
-		SA1.sum = (SA1.op1 / (int) ((uint16) SA1.op2)) |
-			  ((SA1.op1 % (int) ((uint16) SA1.op2)) << 16);
-	    }
-	    break;
-	case 2:
-	default: // cumulative sum
-	    SA1.sum += SA1.op1 * SA1.op2;
-	    if (SA1.sum & ((int64) 0xffffff << 32))
-		SA1.overflow = TRUE;
-	    break;
-	}
-	break;
-    case 0x2258:    // Variable bit-field length/auto inc/start.
-	ROM_GLOBAL [0x2258] = byte;
-	S9xSA1ReadVariableLengthData (TRUE, FALSE);
-	return;
-    case 0x2259:
-    case 0x225a:
-    case 0x225b:    // Variable bit-field start address
-	ROM_GLOBAL [address] = byte;
-	// XXX: ???
-	SA1.variable_bit_pos = 0;
-	S9xSA1ReadVariableLengthData (FALSE, TRUE);
-	return;
-    default:
-//	printf ("W: %02x->%04x\n", byte, address);
-	break;
+	return (0);
     }
-    if (address >= 0x2200 && address <= 0x22ff)
-	ROM_GLOBAL [address] = byte;
 }
 
-static void S9xSA1CharConv2 ()
+INLINE void S9xSetPCBase (uint32 Address)
 {
-    uint32 dest = ROM_GLOBAL [0x2235] | (ROM_GLOBAL [0x2236] << 8);
-    uint32 offset = (SA1.in_char_dma & 7) ? 0 : 1;
-    int depth = (ROM_GLOBAL [0x2231] & 3) == 0 ? 8 :
-		(ROM_GLOBAL [0x2231] & 3) == 1 ? 4 : 2;
-    int bytes_per_char = 8 * depth;
-    uint8 *p = &ROM_GLOBAL [0x3000] + dest + offset * bytes_per_char;
-    uint8 *q = &Memory.ROM [/*CMemory::*/Memory.MAX_ROM_SIZE - 0x10000] + offset * 64;
+    int block;
+    uint8 *GetAddress = Map [block = (Address >> MEMMAP_SHIFT) & MEMMAP_MASK];
 
-    switch (depth)
+	CPU.MemSpeed = Memory.MemorySpeed [block];
+	CPU.MemSpeedx2 = CPU.MemSpeed << 1;
+ 
+   if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
     {
-    case 2:
-	break;
-    case 4:
-	break;
-    case 8:
-	for (int l = 0; l < 8; l++, q += 8)
-	{
-	    for (int b = 0; b < 8; b++)
-	    {
-		uint8 r = *(q + b);
-		*(p +  0) = (*(p +  0) << 1) | ((r >> 0) & 1);
-		*(p +  1) = (*(p +  1) << 1) | ((r >> 1) & 1);
-		*(p + 16) = (*(p + 16) << 1) | ((r >> 2) & 1);
-		*(p + 17) = (*(p + 17) << 1) | ((r >> 3) & 1);
-		*(p + 32) = (*(p + 32) << 1) | ((r >> 4) & 1);
-		*(p + 33) = (*(p + 33) << 1) | ((r >> 5) & 1);
-		*(p + 48) = (*(p + 48) << 1) | ((r >> 6) & 1);
-		*(p + 49) = (*(p + 49) << 1) | ((r >> 7) & 1);
-	    }
-	    p += 2;
-	}
-	break;
+		CPU.PCBase = GetAddress;
+		CPU.PC = GetAddress + (Address & 0xffff);
+		return;
     }
+    S9xSetPCBaseOthers(GetAddress, Address);
 }
 
-static void S9xSA1DMA ()
-{
-    uint32 src =  ROM_GLOBAL [0x2232] |
-	         (ROM_GLOBAL [0x2233] << 8) |
-		 (ROM_GLOBAL [0x2234] << 16);
-    uint32 dst =  ROM_GLOBAL [0x2235] |
-	         (ROM_GLOBAL [0x2236] << 8) |
-		 (ROM_GLOBAL [0x2237] << 16);
-    uint32 len =  ROM_GLOBAL [0x2238] |
-		 (ROM_GLOBAL [0x2239] << 8);
-
-    uint8 *s;
-    uint8 *d;
-
-    switch (ROM_GLOBAL [0x2230] & 3)
-    {
-    case 0: // ROM
-	s = SA1.Map [(src >> MEMMAP_SHIFT) & MEMMAP_MASK];
-	if (s >= (uint8 *) CMemory::MAP_LAST)
-	    s += (src & 0xffff);
-	else
-	    s = Memory.ROM + (src & 0xffff);
-	break;
-    case 1: // BW-RAM
-	src &= Memory.SRAMMask;
-	len &= Memory.SRAMMask;
-	s = SRAM + src;
-	break;
-    default:
-    case 2:
-	src &= 0x3ff;
-	len &= 0x3ff;
-	s = &ROM_GLOBAL [0x3000] + src;
-	break;
-    }
-
-    if (ROM_GLOBAL [0x2230] & 4)
-    {
-	dst &= Memory.SRAMMask;
-	len &= Memory.SRAMMask;
-	d = SRAM + dst;
-    }
-    else
-    {
-	dst &= 0x3ff;
-	len &= 0x3ff;
-	d = &ROM_GLOBAL [0x3000] + dst;
-    }
-    memmove (d, s, len);
-    ROM_GLOBAL [0x2301] |= 0x20;
-    
-    if (ROM_GLOBAL [0x220a] & 0x20)
-    {
-	SA1.Flags |= IRQ_PENDING_FLAG;
-	SA1.IRQActive |= DMA_IRQ_SOURCE;
-//	SA1.Executing = !SA1.Waiting;
-    }
-}
-
-void S9xSA1ReadVariableLengthData (bool8 inc, bool8 no_shift)
-{
-    uint32 addr =  ROM_GLOBAL [0x2259] |
-		  (ROM_GLOBAL [0x225a] << 8) |
-		  (ROM_GLOBAL [0x225b] << 16);
-    uint8 shift = ROM_GLOBAL [0x2258] & 15;
-
-    if (no_shift)
-	shift = 0;
-    else
-    if (shift == 0)
-	shift = 16;
-
-    uint8 s = shift + SA1.variable_bit_pos;
-
-    if (s >= 16)
-    {
-	addr += (s >> 4) << 1;
-	s &= 15;
-    }
-    uint32 data = S9xSA1GetWord (addr) |
-		  (S9xSA1GetWord (addr + 2) << 16);
-
-    data >>= s;
-    ROM_GLOBAL [0x230c] = (uint8) data;
-    ROM_GLOBAL [0x230d] = (uint8) (data >> 8);
-    if (inc)
-    {
-	SA1.variable_bit_pos = (SA1.variable_bit_pos + shift) & 15;
-	ROM_GLOBAL [0x2259] = (uint8) addr;
-	ROM_GLOBAL [0x225a] = (uint8) (addr >> 8);
-	ROM_GLOBAL [0x225b] = (uint8) (addr >> 16);
-    }
-}
+#endif
