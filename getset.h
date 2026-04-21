@@ -232,10 +232,10 @@ INLINE void S9xSetWord(uint16 Word, uint32 Address)
 			}
 		}
 #ifdef FAST_LSB_WORD_ACCESS
-	*(uint16 *) SetAddress = Word;
+	*(uint16 *) (SetAddress + (Address & 0xffff)) = Word;
 #else
-	*(SetAddress + (Address & 0xffff)) = (uint8) Word;
-	*(SetAddress + ((Address + 1) & 0xffff)) = Word >> 8;
+	*(SetAddress + (Address & 0xffff))       = (uint8) Word;
+	*(SetAddress + ((Address + 1) & 0xffff)) = (uint8) (Word >> 8);
 #endif
 #else
 #ifdef FAST_LSB_WORD_ACCESS
