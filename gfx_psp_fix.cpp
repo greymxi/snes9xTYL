@@ -2070,7 +2070,7 @@ info(32,2,"nothing on subscreen");
 		sceGuDepthMask(GU_TRUE);				
 		// now we'll add subscreen/fixedcolour
 		
-		if ((!IPPU.ClipFix [0].Count[5])&&SUB_OR_ADD(5))
+		if ((!IPPU.ClipFix [0].GroupCount[5])&&SUB_OR_ADD(5))
 		{
 			//no colour window on mainscreen
 			//and sub_or_add back colour as well
