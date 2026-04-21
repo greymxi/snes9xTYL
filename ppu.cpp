@@ -164,10 +164,7 @@ void S9xFixColourBrightness ()
 void S9xSetPPU (uint8 Byte, uint16 Address)
 {
 	int apu_ram_write_pos;
-    // Hot path: standard PPU registers $2100-$2183. The else branch handles
-    // SuperFX/GSU registers ($3000+) which are only written during FX-chip
-    // games and are rare even then.
-    if (LIKELY(Address <= 0x2183))
+    if (Address <= 0x2183)
     {
     switch (Address)
     {
@@ -1225,8 +1222,7 @@ uint8 S9xGetPPU (uint16 Address)
 {
     uint8 byte = 0;
 
-    // Hot path: standard PPU registers $2100-$2190.
-    if (LIKELY(Address <= 0x2190))
+    if (Address <= 0x2190)
     {
 	switch (Address)
 	{
