@@ -221,14 +221,20 @@ uint8 S9xSA1GetByteSlow (uint32 address, int GetAddress)
 
 uint16 S9xSA1GetWord (uint32 address)
 {
-	//return (S9xSA1GetByte (address) | (S9xSA1GetByte (address + 1) << 8));
-    uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-    // Hot path: word read straight out of mapped memory. Slow path dispatches
-    // to two S9xSA1GetByte calls for register/bitmap regions.
-    if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
-		return (*(GetAddress + ((address+1) & 0xffff)))<<8 | (*(GetAddress + (address & 0xffff)));
-	else
-		return (S9xSA1GetByte (address) | (S9xSA1GetByte (address + 1) << 8));
+    // Fast path: both bytes are in the same 64KB block. This is true for
+    // virtually every word read except those that land exactly on a bank
+    // boundary (address & 0xffff == 0xffff). Guard that case explicitly
+    // and fall through to two S9xSA1GetByte calls so the map is consulted
+    // separately for each byte — important when the two halves of the word
+    // map to different regions.
+    if (LIKELY((address & 0xffff) != 0xffff))
+    {
+        uint8 *GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
+        if (LIKELY(GetAddress >= (uint8 *) CMemory::MAP_LAST))
+            return (*(GetAddress + (address & 0xffff))) |
+                   (*(GetAddress + (address & 0xffff) + 1) << 8);
+    }
+    return (S9xSA1GetByte (address) | (S9xSA1GetByte (address + 1) << 8));
 }
 
 void S9xSA1SetByte (uint8 byte, uint32 address)
@@ -338,24 +344,18 @@ void S9xSA1SetByteSlow (uint8 byte, uint32 address, int Setaddress)
 
 void S9xSA1SetWord (uint16 Word, uint32 address)
 {
-    //S9xSA1SetByte ((uint8) Word, address);
-    //S9xSA1SetByte ((uint8) (Word >> 8), address + 1);
+    uint8 *Setaddress = SA1.WriteMap [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
 
-	uint8 *Setaddress = SA1.WriteMap [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
-
-    if (Setaddress >= (uint8 *) CMemory::MAP_LAST)
+    // Hot path: direct memory write. Cold path delegates to S9xSA1SetByte
+    // which handles register/bitmap regions.
+    if (LIKELY(Setaddress >= (uint8 *) CMemory::MAP_LAST))
     {
-	*(Setaddress + (address & 0xffff)) = Word;
-	*(Setaddress + ((address+1) & 0xffff)) = Word>>8;
-	return;
-	}
-	else
-	{
-		S9xSA1SetByte ((uint8) Word, address);
-		S9xSA1SetByte ((uint8) (Word >> 8), address + 1);
-		return;
-	}
-
+        *(Setaddress + (address & 0xffff))       = (uint8) Word;
+        *(Setaddress + ((address + 1) & 0xffff)) = (uint8) (Word >> 8);
+        return;
+    }
+    S9xSA1SetByte ((uint8) Word,        address);
+    S9xSA1SetByte ((uint8) (Word >> 8), address + 1);
 }
 
 void S9xSA1SetPCBase (uint32 address)
